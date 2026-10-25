@@ -384,8 +384,11 @@ class Stage3Tests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Unrecognised KRX response"):
             krx.parse({"respMsg": "Unauthorized API Call"}, self.cfg["KOSPI"])
 
+    def _krx_cfg(self):
+        return {**self.cfg["KOSPI"], "source": "krx"}
+
     def test_krx_without_key_needs_setup(self):
-        ok = self.run.update_exchange("KOSPI", self.cfg["KOSPI"], 0)
+        ok = self.run.update_exchange("KOSPI", self._krx_cfg(), 0)
         self.assertFalse(ok)
         errs = self.store.read_status("KOSPI")["errors"]
         self.assertEqual(len(errs), 1)                                # stops at once, no retry storm
@@ -398,7 +401,7 @@ class Stage3Tests(unittest.TestCase):
             raise RuntimeError(f"Download failed after 3 tries: {url} (HTTP 500)")
         with mock.patch.object(krx, "get_bytes", boom), mock.patch.object(krx, "_session", None), \
              mock.patch.object(self.run.time, "sleep", lambda s: None):
-            self.run.update_exchange("KOSPI", self.cfg["KOSPI"], 0)
+            self.run.update_exchange("KOSPI", self._krx_cfg(), 0)
         status = json.dumps(self.store.read_status("KOSPI"))
         self.assertNotIn("SECRETKEY123", status)
         self.assertIn("***", status)
@@ -538,3 +541,143 @@ class SinaTests(unittest.TestCase):
         with mock.patch.dict(sys.modules, {"akshare": fake}):
             with self.assertRaisesRegex(RuntimeError, "all providers failed; sina: .* eastmoney: "):
                 self.em.fetch(dt.date(2026, 10, 23), self.cfg["SSE"])
+
+
+class YahooScreenAndNamesTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        os.environ["WC_DATA_DIR"] = str(self.tmp / "data")
+        import pipeline.store, pipeline.build_site, pipeline.run, pipeline.names
+        for m in (pipeline.store, pipeline.names, pipeline.build_site, pipeline.run):
+            importlib.reload(m)
+        pipeline.build_site.SITE_DATA = self.tmp / "site_data"
+        self.store, self.build_site, self.run, self.names = pipeline.store, pipeline.build_site, pipeline.run, pipeline.names
+        self.cfg = self.run.load_config()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp)
+        os.environ.pop("WC_DATA_DIR", None)
+
+    @staticmethod
+    def _korea_quotes(n=60):
+        # 2026-10-23 15:30 KST = 06:30 UTC
+        t = int(dt.datetime(2026, 10, 23, 6, 30, tzinfo=dt.timezone.utc).timestamp())
+        base = [
+            {"symbol": "005930.KS", "shortName": "SamsungElec", "longName": "Samsung Electronics Co., Ltd.",
+             "regularMarketPrice": 98500.0, "regularMarketPreviousClose": 97000.0, "regularMarketOpen": 97200.0,
+             "regularMarketDayHigh": 99000.0, "regularMarketDayLow": 96800.0, "regularMarketVolume": 15234567,
+             "marketCap": 588e12, "regularMarketTime": t},
+            {"symbol": "000660.KS", "shortName": "SK hynix", "regularMarketPrice": 310000.0,
+             "regularMarketPreviousClose": 314000.0, "regularMarketVolume": 3000000, "marketCap": 225.7e12,
+             "regularMarketTime": t},
+        ]
+        extra = [{"symbol": f"{100000 + i}.KS", "longName": f"Company {i} Co., Ltd.", "regularMarketPrice": 1000.0 + i,
+                  "regularMarketPreviousClose": 1000.0, "regularMarketVolume": 1000 + i, "regularMarketTime": t}
+                 for i in range(n)]
+        return base + extra
+
+    def test_parse_korea(self):
+        from pipeline.sources import yahoo_screen
+        df = yahoo_screen.parse(self._korea_quotes(), self.cfg["KOSPI"])
+        self.assertEqual(df.attrs["session_date"], dt.date(2026, 10, 23))
+        d = df.set_index("symbol")
+        self.assertEqual(d.at["005930", "name"], "Samsung Electronics Co., Ltd.")
+        self.assertEqual(d.at["000660", "name"], "SK hynix")                    # falls back to shortName
+        self.assertEqual(d.at["005930", "close"], 98500)
+        self.assertEqual(d.at["005930", "prev_close"], 97000)
+        self.assertEqual(d.at["005930", "market_cap"], 588e12)
+        self.assertEqual(d.at["005930", "value"], round(98500 * 15234567))
+
+    def test_screen_all_pages_through_everything(self):
+        from pipeline.sources import yahoo_screen
+        everything = [{"symbol": f"{i:06d}.KS"} for i in range(600)]
+        calls = []
+        def screen(query, offset=0, size=250, **kw):
+            calls.append(offset)
+            return {"quotes": everything[offset:offset + size], "total": len(everything)}
+        fake = mock.Mock(screen=screen, EquityQuery=lambda *a: ("eq", a), ETFQuery=lambda *a: ("etf", a))
+        with mock.patch.dict(sys.modules, {"yfinance": fake}), mock.patch.object(yahoo_screen.time, "sleep", lambda s: None):
+            got = yahoo_screen.screen_all("KSC")
+        self.assertEqual(len(got), 600)
+        self.assertEqual(calls, [0, 250, 500])
+
+    def test_korea_update_and_backfill_end_to_end(self):
+        from pipeline.sources import yahoo_screen
+        quotes = self._korea_quotes()
+        cfg = self.cfg["KOSPI"]
+        seoul = ZoneInfoT("Asia/Seoul")
+        backfilled = []
+        def fake_backfill(latest, start, end, c=None):
+            backfilled.append(len(latest))
+            return {}, len(latest), []
+        with mock.patch.object(yahoo_screen, "screen_all", lambda ex, qt="EQUITY": quotes), \
+             mock.patch.object(yahoo_screen, "backfill", fake_backfill), \
+             mock.patch.object(self.run, "local_now", lambda tz: dt.datetime(2026, 10, 26, 2, 0, tzinfo=seoul)):
+            self.assertTrue(self.run.update_exchange("KOSPI", cfg, 370))
+        self.assertEqual(self.store.stored_days("KOSPI"), [dt.date(2026, 10, 23)])
+        self.assertEqual(backfilled, [62])
+
+    def test_backfill_skipped_when_history_exists(self):
+        from pipeline.sources import yahoo_screen
+        quotes = self._korea_quotes()
+        cfg = self.cfg["KOSPI"]
+        day0 = yahoo_screen.parse(quotes, cfg)
+        for d in pd_bdays("2025-10-23", "2026-10-22"):
+            self.store.save_day("KOSPI", d, day0)
+        called = []
+        with mock.patch.object(yahoo_screen, "screen_all", lambda ex, qt="EQUITY": quotes), \
+             mock.patch.object(yahoo_screen, "backfill", lambda *a: called.append(1) or ({}, 0, [])), \
+             mock.patch.object(self.run, "local_now", lambda tz: dt.datetime(2026, 10, 26, 2, 0, tzinfo=ZoneInfoT(tz))):
+            self.run.update_exchange("KOSPI", cfg, 370)
+        self.assertEqual(called, [])
+        self.assertIn("Backfill skipped", " ".join(self.store.read_status("KOSPI")["notes"]))
+
+    def test_english_names_refresh_and_display(self):
+        import pandas as pd
+        from pipeline.sources import yahoo_screen
+        cfg = self.cfg["SSE"]
+        day = pd.DataFrame([{"symbol": "600519", "name": "贵州茅台", "isin": "", "series": "Main Board", "close": 1450.0,
+                             "prev_close": 1438.0, "volume": 3100000, "value": 4.5e9},
+                            {"symbol": "600000", "name": "浦发银行", "isin": "", "series": "Main Board", "close": 9.53,
+                             "prev_close": 9.5, "volume": 75592632, "value": 7.2e8}])
+        from pipeline.common import STANDARD_COLUMNS
+        self.store.save_day("SSE", dt.date(2026, 10, 23), day.reindex(columns=STANDARD_COLUMNS))
+        quotes = [{"symbol": "600519.SS", "longName": "Kweichow  Moutai Co., Ltd."}]   # 600000 has no English name
+        with mock.patch.object(yahoo_screen, "screen_all", lambda ex, qt="EQUITY": quotes):
+            self.run.refresh_names("SSE", cfg)
+        self.assertEqual(self.names.load("SSE"), {"600519": "Kweichow Moutai Co., Ltd."})   # spaces tidied
+        self.assertIn("English names: 1 of 2", " ".join(self.store.read_status("SSE")["notes"]))
+        self.build_site.build()
+        s = json.loads((self.build_site.SITE_DATA / "SSE" / "summary.json").read_text())
+        f = {k: i for i, k in enumerate(s["fields"])}
+        rows = {r[0]: r for r in s["rows"]}
+        self.assertEqual(rows["600519"][f["name"]], "Kweichow Moutai Co., Ltd.")
+        self.assertEqual(rows["600519"][f["local_name"]], "贵州茅台")
+        self.assertEqual(rows["600000"][f["name"]], "浦发银行")                 # no English: original kept
+        self.assertIsNone(rows["600000"][f["local_name"]])
+
+    def test_names_only_refresh_when_due(self):
+        today = dt.date(2026, 10, 26)
+        self.assertTrue(self.names.needs_refresh("SSE", ["600519"], today))       # nothing saved yet
+        p = self.names.path("SSE"); p.parent.mkdir(parents=True)
+        p.write_text(json.dumps({"updated": "2026-10-24", "names": {"600519": "Kweichow Moutai"}}))
+        self.assertFalse(self.names.needs_refresh("SSE", ["600519"], today))      # fresh, complete
+        self.assertTrue(self.names.needs_refresh("SSE", ["600519", "600000"], today))   # 50% missing
+        self.assertTrue(self.names.needs_refresh("SSE", ["600519"], dt.date(2026, 11, 5)))  # a week old
+
+    def test_names_failure_does_not_break_update(self):
+        from pipeline.sources import yahoo_screen
+        import pandas as pd
+        from pipeline.common import STANDARD_COLUMNS
+        self.store.save_day("SSE", dt.date(2026, 10, 23), pd.DataFrame([{"symbol": "600519", "name": "贵州茅台",
+                            "close": 1.0}]).reindex(columns=STANDARD_COLUMNS))
+        def boom(*a, **k):
+            raise ConnectionError("Yahoo down")
+        with mock.patch.object(yahoo_screen, "screen_all", boom):
+            self.run.refresh_names("SSE", self.cfg["SSE"])
+        self.assertIn("couldn't refresh", " ".join(self.store.read_status("SSE")["notes"]))
+
+
+def pd_bdays(a, b):
+    import pandas as pd
+    return [d.date() for d in pd.bdate_range(a, b)]

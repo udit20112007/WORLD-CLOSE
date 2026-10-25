@@ -65,14 +65,27 @@ Sources:
 
 | Shanghai, Shenzhen, Hong Kong | Sina Finance market lists via the AKShare library, with East Money as a fallback | Latest session only; Yahoo backfill for history. Mainland boards: Main Board, STAR Market, ChiNext. Mainland names are in Chinese; Hong Kong names are in English. East Money often refuses connections from outside China, which is why Sina is tried first. |
 | Taiwan | Official TWSE OpenAPI (`STOCK_DAY_ALL`) | Latest session, with its trading date; Yahoo backfill for history. Stocks and ETFs. |
-| KOSPI, KOSDAQ | Official KRX OpenAPI | Any date, so history is native. **Needs a free API key** (see below). Names are in Korean. |
+| KOSPI, KOSDAQ | Yahoo Finance's stock screener | Latest session, with English names and market caps; Yahoo backfill for history. No sign-up needed. (A KRX OpenAPI source is also included; see below.) |
 | B3 (Brazil) | B3's official COTAHIST files | Any date; the backfill uses the annual file (one download per year). Standard-lot shares on the cash market. |
 
-### Setting up the Korea key (KOSPI, KOSDAQ)
+### English company names
 
-The Korea Exchange now requires a free API key. Until it's set, the two
-Korean exchanges show "Needs setup" on the status page and everything else
-keeps working.
+Shanghai, Shenzhen and Taiwan publish company names only in Chinese. Each
+week the pipeline fetches every company's official English name from Yahoo
+Finance's screener and saves it in `data/<EXCHANGE>/english_names.json`. The
+site shows the English name with the original beside it, and searching works
+in either language. A stock with no English name on Yahoo keeps its original
+name. To turn this on for another exchange, add for example
+`"english_names": {"yahoo_exchange": "SHH"}` to its entry in
+`config/exchanges.json`.
+
+### Optional: Korea from the official KRX OpenAPI
+
+Korea uses Yahoo's screener by default. If you'd rather use the Korea
+Exchange's own data, the `krx` source is included and needs a free API key.
+Note that sign-up may require a Korean mobile number for identity
+verification. To switch, set `"source": "krx"` for KOSPI and KOSDAQ in
+`config/exchanges.json`, then:
 
 1. Go to https://openapi.krx.co.kr, sign up, and request an API key
    (My page → API key application). Approval usually takes about a day and
@@ -149,7 +162,7 @@ Actions tab.
 
 ```bash
 pip install -r requirements.txt
-python -m unittest discover tests               # 30 tests using sample exchange files
+python -m unittest discover tests               # 37 tests using sample exchange files
 python -m pipeline.run update --exchanges NSE BSE
 python -m pipeline.run build
 cd site && python -m http.server 8000           # open http://localhost:8000

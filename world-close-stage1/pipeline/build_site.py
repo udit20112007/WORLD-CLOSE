@@ -24,7 +24,7 @@ HISTORY_DAYS = 370
 
 SUMMARY_FIELDS = ["symbol", "name", "isin", "series", "close", "prev_close", "change_pct",
                   "high_52w", "low_52w", "volume", "value", "days_ago", "bucket", "also",
-                  "sector", "market_cap"]
+                  "sector", "market_cap", "local_name"]
 
 
 def _num(v, digits=2):
@@ -94,14 +94,20 @@ def build() -> None:
         out_dir = SITE_DATA / code
         (out_dir / "hist").mkdir(parents=True)
 
+        from .names import load as load_names
+        english = load_names(code) if c.get("english_names") else {}
         rows = []
         for r in last.itertuples(index=False):
+            local = None
+            name = r.name
+            if english.get(r.symbol) and english[r.symbol] != r.name:
+                name, local = english[r.symbol], r.name
             also = sorted(isin_map.get(r.isin, set()) - {code}) if r.isin else []
-            rows.append([r.symbol, r.name, r.isin, r.series, _num(r.close), _num(r.prev_close),
+            rows.append([r.symbol, name, r.isin, r.series, _num(r.close), _num(r.prev_close),
                          _num(r.change_pct, 3), _num(r.high_52w), _num(r.low_52w),
                          None if pd.isna(r.volume) else int(r.volume), _num(r.value, 0),
                          int(r.days_ago), int(r.bucket), also,
-                         r.sector or None, _num(r.market_cap, 0)])
+                         r.sector or None, _num(r.market_cap, 0), local])
         today_rows = last[last["days_ago"] == 0]
         breadth = {
             "up": int((today_rows["change_pct"] > 0).sum()),

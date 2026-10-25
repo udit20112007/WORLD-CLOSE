@@ -84,6 +84,13 @@ def local_now(tz: str) -> dt.datetime:
     return dt.datetime.now(ZoneInfo(tz))
 
 
+def has_history(have: list[dt.date], backfill_days: int) -> bool:
+    """True if we already hold most of the trading days a backfill would fetch."""
+    start = have[-1] - dt.timedelta(days=backfill_days)
+    expected = backfill_days * 5 / 7 * 0.8      # weekdays, allowing for holidays
+    return sum(1 for d in have if d >= start) >= expected
+
+
 def fill_prev_close(code: str, day: dt.date, df: "pd.DataFrame") -> "pd.DataFrame":
     """For sources that don't report a previous close, use our last stored close before `day`."""
     if df["prev_close"].notna().any():
@@ -137,7 +144,9 @@ def update_latest_only(code: str, cfg: dict, source, backfill_days: int) -> bool
 
     if backfill_days and hasattr(source, "backfill"):
         have = store.stored_days(code)
-        if have:
+        if have and has_history(have, backfill_days):
+            notes.append(f"Backfill skipped: {len(have)} days already stored.")
+        elif have:
             latest = store.load_day(code, have[-1])
             start = have[-1] - dt.timedelta(days=backfill_days)
             print(f"[{code}] backfilling {start} to {have[-1]} from Yahoo for {len(latest)} stocks…")
@@ -167,6 +176,29 @@ def update_latest_only(code: str, cfg: dict, source, backfill_days: int) -> bool
 
 
 def update_exchange(code: str, cfg: dict, backfill_days: int) -> bool:
+    ok = _update_exchange(code, cfg, backfill_days)
+    if cfg.get("english_names"):
+        refresh_names(code, cfg)
+    return ok
+
+
+def refresh_names(code: str, cfg: dict) -> None:
+    from . import names
+    have = store.stored_days(code)
+    if not have:
+        return
+    symbols = list(store.load_day(code, have[-1])["symbol"])
+    try:
+        note = names.refresh(code, cfg, symbols, local_now(cfg["timezone"]).date())
+    except Exception as exc:
+        note = f"English names: couldn't refresh this time ({str(exc)[:160]})."
+    if note:
+        print(f"[{code}] {note}")
+        status = store.read_status(code)
+        store.write_status(code, notes=(status.get("notes") or [])[-3:] + [note])
+
+
+def _update_exchange(code: str, cfg: dict, backfill_days: int) -> bool:
     source = SOURCES[cfg["source"]]
     if getattr(source, "LATEST_ONLY", False):
         return update_latest_only(code, cfg, source, backfill_days)

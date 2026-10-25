@@ -11,7 +11,7 @@ to fill in past days from another source. Date-based sources may offer
     fetch_range(start, end, cfg) -> {day: DataFrame}
 to download a whole range at once for the backfill.
 """
-from . import b3, bse, eastmoney, krx, nasdaq, nse, twse
+from . import b3, bse, eastmoney, krx, nasdaq, nse, twse, yahoo_screen
 
 SOURCES = {
     "nse": nse,
@@ -21,4 +21,5 @@ SOURCES = {
     "twse": twse,
     "krx": krx,
     "b3": b3,
+    "yahoo_screen": yahoo_screen,
 }

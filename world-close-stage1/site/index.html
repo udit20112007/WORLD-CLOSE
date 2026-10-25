@@ -108,6 +108,7 @@ tbody tr:hover { background: color-mix(in srgb, var(--accent) 5%, transparent); 
 .co button { all: unset; cursor: pointer; display: block; }
 .co button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .co .nm { font-weight: 500; }
+.co .local { color: var(--muted); font-size: 13px; margin-left: 4px; }
 .sub { color: var(--muted); font-size: 12px; }
 td.pct { font-weight: 600; }
 .range { width: 110px; position: relative; height: 4px; background: var(--rule); border-radius: 2px; }
@@ -321,6 +322,7 @@ dialog::backdrop { background: rgba(10, 18, 32, 0.45); }
       catch (err) { $("#view").innerHTML = `<p class="empty">${esc(err.message)}. Check the data status page.</p>`; return; }
       state.ex = code; state.rows = toObjects(state.summary);
       state.hasCap = state.rows.some((r) => r.market_cap);
+      state.lang = { China: "zh-Hans", "Hong Kong": "zh-Hant", Taiwan: "zh-Hant", "South Korea": "ko" }[ex.country] || "";
       state.hasSector = state.rows.some((r) => r.sector);
       Object.assign(state, { q: "", series: "", sector: "", sort: state.hasCap ? "market_cap" : "value", dir: -1, page: 0 });
     }
@@ -401,7 +403,8 @@ dialog::backdrop { background: rgba(10, 18, 32, 0.45); }
     let list = state.rows;
     if (state.series) list = list.filter((r) => r.series === state.series);
     if (state.sector) list = list.filter((r) => r.sector === state.sector);
-    if (q) list = list.filter((r) => r.name.toLowerCase().includes(q) || r.symbol.toLowerCase().includes(q) || (r.isin || "").toLowerCase() === q);
+    if (q) list = list.filter((r) => r.name.toLowerCase().includes(q) || (r.local_name || "").toLowerCase().includes(q) ||
+      r.symbol.toLowerCase().includes(q) || (r.isin || "").toLowerCase() === q);
     const key = state.sort;
     const val = (r) => (key === "range" ? rangePos(r) : key === "name" ? r.name.toLowerCase() : r[key] ?? -Infinity);
     list = [...list].sort((a, b) => { const x = val(a), y = val(b); return (x < y ? -1 : x > y ? 1 : 0) * state.dir; });
@@ -411,7 +414,7 @@ dialog::backdrop { background: rgba(10, 18, 32, 0.45); }
     document.querySelectorAll("#view thead th[data-key]").forEach((th) =>
       th.setAttribute("aria-sort", th.dataset.key === key ? (state.dir > 0 ? "ascending" : "descending") : "none"));
     $("#rows").innerHTML = slice.map((r) => `<tr>
-      <td class="co"><button type="button" data-open="${esc(r.symbol)}"><span class="nm">${esc(r.name)}</span><br>
+      <td class="co"><button type="button" data-open="${esc(r.symbol)}"><span class="nm">${esc(r.name)}</span>${r.local_name ? ` <span class="local" lang="${esc(state.lang)}">${esc(r.local_name)}</span>` : ""}<br>
         <span class="sub">${esc(r.symbol)}${r.series ? ", " + esc(r.series) : ""}${r.days_ago > 0 ? `, last traded ${fmtDate(addDays(state.summary.as_of, -r.days_ago))}` : ""}</span></button></td>
       <td class="num">${money(r.close, cur)}</td>
       <td class="num pct ${dir(r.change_pct)}">${pct(r.change_pct)}</td>
@@ -433,7 +436,7 @@ dialog::backdrop { background: rgba(10, 18, 32, 0.45); }
     state.stock = r;
     $("#d-name").textContent = r.name;
     const lastDay = addDays(s.as_of, -r.days_ago);
-    $("#d-sub").textContent = `${r.symbol} on ${ex.short}. Close on ${fmtDate(lastDay)}.`;
+    $("#d-sub").innerHTML = `${r.local_name ? `<span lang="${esc(state.lang)}">${esc(r.local_name)}</span><br>` : ""}${esc(r.symbol)} on ${esc(ex.short)}. Close on ${fmtDate(lastDay)}.`;
     $("#d-price").textContent = money(r.close, cur);
     $("#d-chg").className = "chg " + dir(r.change_pct);
     $("#d-chg").textContent = `${pct(r.change_pct)} on the day`;

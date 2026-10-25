@@ -96,7 +96,10 @@
     "series_label": "Board",
     "region": "Asia-Pacific",
     "enabled": true,
-    "open_time": "09:15"
+    "open_time": "09:15",
+    "english_names": {
+      "yahoo_exchange": "SHH"
+    }
   },
   "SZSE": {
     "name": "Shenzhen Stock Exchange",
@@ -111,7 +114,10 @@
     "series_label": "Board",
     "region": "Asia-Pacific",
     "enabled": true,
-    "open_time": "09:15"
+    "open_time": "09:15",
+    "english_names": {
+      "yahoo_exchange": "SHZ"
+    }
   },
   "HKEX": {
     "name": "Hong Kong Stock Exchange",
@@ -140,7 +146,11 @@
     "series_label": "Type",
     "region": "Asia-Pacific",
     "enabled": true,
-    "open_time": "08:30"
+    "open_time": "08:30",
+    "english_names": {
+      "yahoo_exchange": "TAI",
+      "etfs": true
+    }
   },
   "KOSPI": {
     "name": "Korea Exchange: KOSPI",
@@ -149,12 +159,15 @@
     "city": "Seoul",
     "currency": "KRW",
     "timezone": "Asia/Seoul",
-    "source": "krx",
-    "endpoint": "stk_bydd_trd",
+    "source": "yahoo_screen",
     "close_time": "15:30",
-    "series_label": "Section",
+    "series_label": "Type",
     "region": "Asia-Pacific",
-    "enabled": true
+    "enabled": true,
+    "yahoo_exchange": "KSC",
+    "yahoo_suffix": ".KS",
+    "open_time": "08:30",
+    "krx_endpoint": "stk_bydd_trd"
   },
   "KOSDAQ": {
     "name": "Korea Exchange: KOSDAQ",
@@ -163,12 +176,15 @@
     "city": "Seoul",
     "currency": "KRW",
     "timezone": "Asia/Seoul",
-    "source": "krx",
-    "endpoint": "ksq_bydd_trd",
+    "source": "yahoo_screen",
     "close_time": "15:30",
-    "series_label": "Section",
+    "series_label": "Type",
     "region": "Asia-Pacific",
-    "enabled": true
+    "enabled": true,
+    "yahoo_exchange": "KOE",
+    "yahoo_suffix": ".KQ",
+    "open_time": "08:30",
+    "krx_endpoint": "ksq_bydd_trd"
   },
   "B3": {
     "name": "B3 (Brasil Bolsa Balcão)",

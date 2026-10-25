@@ -43,7 +43,7 @@ def fetch(day: dt.date, cfg: dict) -> pd.DataFrame:
     if _session is None:
         _session = session()
         _session.headers["AUTH_KEY"] = key
-    url = BASE.format(endpoint=cfg["endpoint"]) + f"?basDd={day:%Y%m%d}&AUTH_KEY={key}"
+    url = BASE.format(endpoint=cfg.get("krx_endpoint") or cfg["endpoint"]) + f"?basDd={day:%Y%m%d}&AUTH_KEY={key}"
     try:
         blob = get_bytes(_session, url, timeout=60)
     except NotPublished:
@@ -53,7 +53,7 @@ def fetch(day: dt.date, cfg: dict) -> pd.DataFrame:
         msg = str(exc).replace(key, "***")
         if "401" in msg or "403" in msg:
             raise NeedsSetup("KRX rejected the API key. Check it's approved and that you applied for "
-                             f"the {cfg['endpoint']} API on openapi.krx.co.kr") from None
+                             f"the {cfg.get('krx_endpoint') or cfg.get('endpoint')} API on openapi.krx.co.kr") from None
         raise RuntimeError(msg) from None
     return parse(json.loads(blob), cfg)
 
