@@ -64,3 +64,43 @@ def make_demo(days: int = 260) -> None:
                            new_days=1, errors=[], last_trading_day=trading[-1].isoformat(),
                            days_stored=len(trading))
         print(f"[{code}] demo: {len(stocks)} stocks over {len(trading)} days")
+
+
+US_SECTORS = ["Technology", "Health Care", "Finance", "Consumer Discretionary", "Industrials", "Energy",
+              "Real Estate", "Utilities", "Telecommunications", "Basic Materials", "Consumer Staples"]
+US_TYPES = ["Common"] * 14 + ["ADR", "Preferred", "Warrant", "Unit"]
+
+
+def make_demo_us(days: int = 260, counts=None) -> None:
+    """Demo snapshots for the US exchanges, with sectors and market caps."""
+    counts = counts or {"NASDAQ": 3300, "NYSE": 2400, "NYSEAM": 280}
+    rng = np.random.default_rng(23)
+    end = dt.date.today()
+    last_friday = end - dt.timedelta(days=(end.weekday() - 4) % 7)
+    trading = [d.date() for d in pd.bdate_range(end=last_friday, periods=days)]
+    offset = 0
+    for code, n in counts.items():
+        stocks = []
+        for i in range(offset, offset + n):
+            sector = US_SECTORS[i % len(US_SECTORS)]
+            kind = US_TYPES[i % len(US_TYPES)]
+            price = float(rng.lognormal(3.3, 1.2)) if kind != "Warrant" else float(rng.uniform(0.01, 1.5))
+            shares = float(rng.lognormal(18, 1.6))
+            stocks.append({"symbol": f"DM{i:04d}", "name": f"Demo {sector} {i:04d}", "sector": sector,
+                           "series": kind, "price": price, "shares": shares})
+        offset += n
+        last = np.array([s["price"] for s in stocks])
+        for d in trading:
+            close = np.round(last * np.exp(rng.normal(0.0004, 0.021, n)), 4)
+            rows = []
+            for i, s in enumerate(stocks):
+                vol = int(rng.lognormal(12, 1.6))
+                rows.append([s["symbol"], s["name"], "", s["series"], None, None, None, float(close[i]),
+                             float(last[i]), vol, round(float(close[i]) * vol, 0), None, s["sector"],
+                             round(float(close[i]) * s["shares"], 0) if s["series"] in ("Common", "ADR") else None])
+            last = close
+            store.save_day(code, d, pd.DataFrame(rows, columns=STANDARD_COLUMNS))
+        store.write_status(code, last_attempt=f"{trading[-1]}T23:00:00Z", last_success=f"{trading[-1]}T23:00:00Z",
+                           new_days=1, errors=[], notes=[], last_trading_day=trading[-1].isoformat(),
+                           days_stored=len(trading))
+        print(f"[{code}] demo: {n} stocks over {len(trading)} days")

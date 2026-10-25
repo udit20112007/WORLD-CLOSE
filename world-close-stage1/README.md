@@ -3,8 +3,9 @@
 The closing price of every listed stock, exchange by exchange, updated
 automatically after each trading day and hosted free on GitHub Pages.
 
-**Stage 1 (this version): every stock on NSE and BSE.** The framework is built
-so more exchanges plug in as separate sources (see the roadmap below).
+**Covered so far:** every stock on **NSE and BSE** (stage 1) and on **NYSE,
+Nasdaq and NYSE American** (stage 2). More exchanges plug in as separate
+sources (see the roadmap below).
 
 What the site shows for each exchange:
 
@@ -59,6 +60,26 @@ Sources:
 |---|---|---|
 | NSE | Daily cash-market bhavcopy (UDiFF format), `nsearchives.nseindia.com` | Series EQ, BE, BZ and SME series SM, ST, SZ. Bonds, G-secs and other instruments are excluded. |
 | BSE | Daily equity bhavcopy (UDiFF format), `bseindia.com` | All equity groups (A, B, T, X, Z, M, ...). Debt groups are excluded. |
+| NYSE, Nasdaq, NYSE American | Nasdaq's public stock screener, `api.nasdaq.com` | Every listed stock with last price, change, volume, sector and market cap. Types: Common, ADR, Preferred, Warrant, Unit, Right. |
+
+### How the US source differs
+
+The Nasdaq screener only shows the **latest** session, not past days, so:
+
+- The US workflow runs once each weekday evening in New York (19:15 EDT,
+  with a second try at 21:30) and labels the data with that day's date.
+  If it runs while the market is open, it saves nothing rather than storing
+  intraday prices as a close.
+- **Market holidays** are detected by comparison: if nearly every price and
+  volume is identical to the previous saved day, the market was closed and
+  nothing is saved.
+- **Chart history** comes from a one-off backfill: run the US workflow by hand
+  with *backfill days* set to 370, and it downloads the past year of daily
+  closes from Yahoo Finance for common stocks, ADRs and preferreds. This is
+  best effort: Yahoo may refuse some requests from GitHub's servers. The status
+  page reports how many stocks returned history. Running it again only fills
+  in what's missing and never overwrites saved days.
+- Yahoo data is unofficial and meant for personal use.
 
 Change which series or groups are included in `config/exchanges.json`.
 
@@ -103,7 +124,7 @@ Actions tab.
 
 ```bash
 pip install -r requirements.txt
-python -m unittest discover tests               # 7 tests using sample exchange files
+python -m unittest discover tests               # 13 tests using sample exchange files
 python -m pipeline.run update --exchanges NSE BSE
 python -m pipeline.run build
 cd site && python -m http.server 8000           # open http://localhost:8000
@@ -136,7 +157,6 @@ The site picks up new exchanges automatically.
 
 ## Roadmap
 
-- **Stage 2:** NYSE and Nasdaq (every US stock).
 - **Stage 3:** Shanghai, Shenzhen, Korea, Taiwan, Hong Kong, Brazil.
 - **Stage 4:** the remaining exchanges through Yahoo Finance, with the
   largest stocks updated daily and the rest on a rotation.

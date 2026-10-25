@@ -28,8 +28,10 @@ STANDARD_COLUMNS = [
     "volume",      # shares traded
     "value",       # traded value in the exchange currency
     "trades",      # number of trades (if the exchange reports it)
+    "sector",      # industry sector (if the source reports it)
+    "market_cap",  # market capitalisation in the exchange currency (if reported)
 ]
-NUMERIC = ["open", "high", "low", "close", "prev_close", "volume", "value", "trades"]
+NUMERIC = ["open", "high", "low", "close", "prev_close", "volume", "value", "trades", "market_cap"]
 
 BROWSER_HEADERS = {
     "User-Agent": (
@@ -110,6 +112,8 @@ def normalize(raw: pd.DataFrame, colmap: dict[str, list[str]]) -> pd.DataFrame:
         if col not in out.columns:
             out[col] = "" if col not in NUMERIC else None
     for col in NUMERIC:
+        if not pd.api.types.is_numeric_dtype(out[col]):  # "$1,234.50", "1.2%" -> 1234.5, 1.2
+            out[col] = out[col].astype(str).str.replace(r"[$,%\s]", "", regex=True)
         out[col] = pd.to_numeric(out[col], errors="coerce")
     out = out[out["symbol"].ne("") & out["close"].gt(0)]
     if out["name"].eq("").all():

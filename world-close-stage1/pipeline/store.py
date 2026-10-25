@@ -42,16 +42,30 @@ def stored_days(exchange: str) -> list[dt.date]:
     return sorted(days)
 
 
+TEXT_COLUMNS = ("symbol", "name", "isin", "series", "sector")
+
+
+def _read(path: Path) -> pd.DataFrame:
+    df = pd.read_csv(path, dtype={c: str for c in TEXT_COLUMNS}, keep_default_na=False,
+                     na_values={c: [""] for c in STANDARD_COLUMNS if c not in TEXT_COLUMNS})
+    for col in STANDARD_COLUMNS:  # files saved before a column existed
+        if col not in df.columns:
+            df[col] = "" if col in TEXT_COLUMNS else float("nan")
+    return df[STANDARD_COLUMNS]
+
+
+def load_day(exchange: str, day: dt.date) -> pd.DataFrame | None:
+    path = day_file(exchange, day)
+    return _read(path) if path.exists() else None
+
+
 def load_days(exchange: str, since: dt.date) -> pd.DataFrame:
     """All stored rows from `since` onward, with a `date` column."""
     frames = []
     for day in stored_days(exchange):
         if day < since:
             continue
-        df = pd.read_csv(day_file(exchange, day), dtype={"symbol": str, "name": str, "isin": str, "series": str},
-                         keep_default_na=False, na_values={c: [""] for c in
-                                                           ["open", "high", "low", "close", "prev_close",
-                                                            "volume", "value", "trades"]})
+        df = _read(day_file(exchange, day))
         df["date"] = pd.Timestamp(day)
         frames.append(df)
     if not frames:
@@ -76,3 +90,4 @@ def write_status(exchange: str, **fields) -> None:
     path = status_file(exchange)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+

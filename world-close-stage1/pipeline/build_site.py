@@ -23,7 +23,8 @@ STALE_AFTER_DAYS = 30   # a stock not traded for this long is dropped from the l
 HISTORY_DAYS = 370
 
 SUMMARY_FIELDS = ["symbol", "name", "isin", "series", "close", "prev_close", "change_pct",
-                  "high_52w", "low_52w", "volume", "value", "days_ago", "bucket", "also"]
+                  "high_52w", "low_52w", "volume", "value", "days_ago", "bucket", "also",
+                  "sector", "market_cap"]
 
 
 def _num(v, digits=2):
@@ -50,6 +51,9 @@ def _latest_rows(code: str):
     prev = last["prev_close"].where(last["prev_close"] > 0)
     last["change_pct"] = (last["close"] / prev - 1) * 100
     last["days_ago"] = (pd.Timestamp(latest) - last["date"]).dt.days
+    last["sector"] = last["sector"].fillna("").astype(str)
+    last["isin"] = last["isin"].fillna("").astype(str)
+    last["series"] = last["series"].fillna("").astype(str)
     last = last.sort_values("symbol").reset_index(drop=True)
     last["bucket"] = last.index // BUCKET_SIZE
     return latest, last, df
@@ -81,6 +85,7 @@ def build() -> None:
         c = cfg[code]
         status = store.read_status(code)
         entry = {"code": code, **{k: c[k] for k in ("name", "short", "country", "city", "region", "currency")},
+                 "series_label": c.get("series_label", "Series"),
                  "status": status, "available": last is not None}
         if last is None:
             index["exchanges"].append(entry)
@@ -95,7 +100,8 @@ def build() -> None:
             rows.append([r.symbol, r.name, r.isin, r.series, _num(r.close), _num(r.prev_close),
                          _num(r.change_pct, 3), _num(r.high_52w), _num(r.low_52w),
                          None if pd.isna(r.volume) else int(r.volume), _num(r.value, 0),
-                         int(r.days_ago), int(r.bucket), also])
+                         int(r.days_ago), int(r.bucket), also,
+                         r.sector or None, _num(r.market_cap, 0)])
         today_rows = last[last["days_ago"] == 0]
         breadth = {
             "up": int((today_rows["change_pct"] > 0).sum()),

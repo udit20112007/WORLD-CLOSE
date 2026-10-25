@@ -49,7 +49,9 @@ a { color: var(--accent); }
 .banner { background: var(--banner); color: var(--banner-ink); padding: 10px 14px; border-radius: 6px; margin: 0 0 18px; font-size: 14px; }
 
 /* Exchange picker */
-.picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; margin: 6px 0 36px; padding: 0; list-style: none; }
+#picker { margin: 6px 0 36px; }
+.region { font: 500 13px/1.3 var(--sans); color: var(--muted); margin: 0 0 8px; }
+.picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; margin: 0 0 18px; padding: 0; list-style: none; }
 .pick { all: unset; box-sizing: border-box; cursor: pointer; display: block; width: 100%; padding: 12px 14px 14px;
   background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; }
 .pick:hover { border-color: var(--muted); }
@@ -151,7 +153,8 @@ dialog::backdrop { background: rgba(10, 18, 32, 0.45); }
   .movers { grid-template-columns: 1fr; }
   .col-wide { display: none; }
   .count { margin-left: 0; width: 100%; }
-  .picker { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-bottom: 28px; }
+  .picker { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-bottom: 14px; }
+  #picker { margin-bottom: 28px; }
   .pick { padding: 10px 12px 12px; }
   .pick .full { display: none; }
   .pick .code { margin-bottom: 8px; }
@@ -168,9 +171,9 @@ dialog::backdrop { background: rgba(10, 18, 32, 0.45); }
       <p class="lede">The closing price of every listed stock, exchange by exchange, updated after each trading day.</p>
     </div>
   </header>
-  <p class="banner" id="demo-banner" hidden>These are randomly generated demo stocks and prices for previewing the design, not real market data. The live site shows every real NSE and BSE stock after its first update.</p>
+  <p class="banner" id="demo-banner" hidden>This exchange is showing randomly generated demo stocks and prices to preview the design, not real market data. It fills with real stocks after its first update.</p>
 
-  <nav aria-label="Exchanges"><ul class="picker" id="picker"></ul></nav>
+  <nav aria-label="Exchanges" id="picker"></nav>
   <main id="view" aria-live="polite"></main>
 
   <footer>
@@ -203,7 +206,7 @@ dialog::backdrop { background: rgba(10, 18, 32, 0.45); }
 (() => {
   "use strict";
   const PAGE = 50;
-  const state = { index: null, ex: null, summary: null, rows: [], q: "", series: "", sort: "value", dir: -1, page: 0, period: 0, stock: null, hist: {} };
+  const state = { index: null, ex: null, summary: null, rows: [], q: "", series: "", sector: "", sort: "value", dir: -1, page: 0, period: 0, stock: null, hist: {} };
   const cache = {};
   const $ = (s, r = document) => r.querySelector(s);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -219,9 +222,17 @@ dialog::backdrop { background: rgba(10, 18, 32, 0.45); }
     try { return nf("m" + d, { style: "currency", currency: cur, minimumFractionDigits: d, maximumFractionDigits: d }, cur).format(v); }
     catch { return nf("n" + d, { minimumFractionDigits: d, maximumFractionDigits: d }).format(v); }
   }
-  const compact = (v, cur) => (v == null ? "–" : nf("c", { notation: "compact", maximumFractionDigits: 1 }, cur).format(v));
+  // Indian amounts read naturally in lakh and crore: 1,760 Cr rather than 1.8T Cr
+  function indian(v, prefix = "") {
+    const a = Math.abs(v), d = (x) => nf("in" + (x >= 100 ? 0 : 1), { maximumFractionDigits: x >= 100 ? 0 : 1 }, "INR").format(x);
+    if (a >= 1e7) return `${prefix}${d(v / 1e7)} Cr`;
+    if (a >= 1e5) return `${prefix}${d(v / 1e5)} L`;
+    return prefix + nf("i0", { maximumFractionDigits: 0 }, "INR").format(v);
+  }
+  const compact = (v, cur) => (v == null ? "–" : cur === "INR" ? indian(v) : nf("c", { notation: "compact", maximumFractionDigits: 1 }, cur).format(v));
   const compactMoney = (v, cur) => {
     if (v == null) return "–";
+    if (cur === "INR") return indian(v, "₹");
     try { return nf("cm", { style: "currency", currency: cur, notation: "compact", maximumFractionDigits: 1 }, cur).format(v); }
     catch { return compact(v, cur); }
   };
@@ -239,7 +250,10 @@ dialog::backdrop { background: rgba(10, 18, 32, 0.45); }
     if (cache[path]) return cache[path];
     let data;
     if (P && P.files[path]) data = P.files[path];
-    else if (P && /\/hist\//.test(path)) data = { synthetic: true };
+    else if (P && /\/hist\//.test(path)) {
+      const code = path.split("/")[0];
+      data = P.files[`${code}/summary.json`]?.demo ? { synthetic: true } : { missing: true };
+    }
     else {
       const res = await fetch("data/" + path, { cache: "no-cache" });
       if (!res.ok) throw new Error(`Couldn’t load ${path} (HTTP ${res.status})`);
@@ -281,15 +295,20 @@ dialog::backdrop { background: rgba(10, 18, 32, 0.45); }
     return `<div class="breadth ${cls}" role="img" aria-label="${int(b.up)} rose, ${int(b.down)} fell, ${int(b.flat)} unchanged">
       <span class="b-up" style="width:${w(b.up)}"></span><span class="b-down" style="width:${w(b.down)}"></span><span class="b-flat" style="width:${w(b.flat)}"></span></div>`;
   }
+  const REGIONS = ["Asia-Pacific", "Europe", "Middle East & Africa", "Americas"];
   function renderPicker(active) {
-    $("#picker").innerHTML = state.index.exchanges.map((e) => {
+    const card = (e) => {
       if (!e.available) return `<li><div class="pick off"><div class="code">${esc(e.short)}</div><div class="full">${esc(e.name)}</div><div class="meta">Waiting for its first update</div></div></li>`;
       return `<li><button type="button" class="pick" data-ex="${esc(e.code)}" aria-current="${e.code === active}">
         <div class="code">${esc(e.short)}</div><div class="full">${esc(e.name)}, ${esc(e.city)}</div>
         ${breadthBar(e.breadth)}
         <div class="meta"><span><strong>${int(e.count)}</strong> stocks</span><span>${fmtDate(e.as_of)}</span></div>
       </button></li>`;
-    }).join("");
+    };
+    const exs = state.index.exchanges;
+    const regions = [...new Set([...REGIONS.filter((r) => exs.some((e) => e.region === r)), ...exs.map((e) => e.region)])];
+    $("#picker").innerHTML = regions.map((r) =>
+      `<h2 class="region">${esc(r)}</h2><ul class="picker">${exs.filter((e) => e.region === r).map(card).join("")}</ul>`).join("");
   }
 
   // ---------- Exchange view ----------
@@ -301,11 +320,16 @@ dialog::backdrop { background: rgba(10, 18, 32, 0.45); }
       try { state.summary = await getJSON(`${code}/summary.json`); }
       catch (err) { $("#view").innerHTML = `<p class="empty">${esc(err.message)}. Check the data status page.</p>`; return; }
       state.ex = code; state.rows = toObjects(state.summary);
-      Object.assign(state, { q: "", series: "", sort: "value", dir: -1, page: 0 });
+      state.hasCap = state.rows.some((r) => r.market_cap);
+      state.hasSector = state.rows.some((r) => r.sector);
+      Object.assign(state, { q: "", series: "", sector: "", sort: state.hasCap ? "market_cap" : "value", dir: -1, page: 0 });
     }
+    $("#demo-banner").hidden = !state.summary.demo;
     const s = state.summary, cur = s.currency, b = s.breadth;
     const traded = state.rows.filter((r) => r.days_ago === 0);
     const seriesList = [...new Set(state.rows.map((r) => r.series).filter(Boolean))].sort();
+    const sectorList = [...new Set(state.rows.map((r) => r.sector).filter(Boolean))].sort();
+    const seriesLabel = ex.series_label || "Series";
 
     // Movers: among the most traded fifth of today's stocks, so tiny illiquid jumps don't dominate
     const byValue = [...traded].sort((a, b) => (b.value || 0) - (a.value || 0));
@@ -338,8 +362,9 @@ dialog::backdrop { background: rgba(10, 18, 32, 0.45); }
       <section aria-labelledby="all-h">
         <h2 id="all-h" class="ex-head" style="font:600 26px/1.1 var(--cond);margin:0">All ${int(state.rows.length)} stocks</h2>
         <div class="toolbar">
-          <input class="search" id="q" type="search" placeholder="Search name, symbol or ISIN" aria-label="Search name, symbol or ISIN" value="${esc(state.q)}">
-          <label><span class="sub">Series </span><select id="series"><option value="">All</option>${seriesList.map((x) => `<option ${x === state.series ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></label>
+          <input class="search" id="q" type="search" placeholder="Search name or symbol" aria-label="Search name or symbol" value="${esc(state.q)}">
+          <label><span class="sub">${esc(seriesLabel)} </span><select id="series"><option value="">All</option>${seriesList.map((x) => `<option ${x === state.series ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></label>
+          ${state.hasSector ? `<label><span class="sub">Sector </span><select id="sector"><option value="">All</option>${sectorList.map((x) => `<option ${x === state.sector ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></label>` : ""}
           <span class="count" id="count"></span>
         </div>
         <div class="table-wrap"><table>
@@ -349,6 +374,7 @@ dialog::backdrop { background: rgba(10, 18, 32, 0.45); }
             <th class="num" data-key="change_pct"><button type="button">Day</button></th>
             <th class="num col-wide" data-key="volume"><button type="button">Volume</button></th>
             <th class="num col-wide" data-key="value"><button type="button">Value traded</button></th>
+            ${state.hasCap ? `<th class="num col-wide" data-key="market_cap"><button type="button">Market cap</button></th>` : ""}
             <th class="col-wide" data-key="range"><button type="button">52-week range</button></th>
           </tr></thead>
           <tbody id="rows"></tbody>
@@ -357,6 +383,7 @@ dialog::backdrop { background: rgba(10, 18, 32, 0.45); }
       </section>`;
     $("#q").addEventListener("input", (e) => { state.q = e.target.value; state.page = 0; renderRows(); });
     $("#series").addEventListener("change", (e) => { state.series = e.target.value; state.page = 0; renderRows(); });
+    $("#sector")?.addEventListener("change", (e) => { state.sector = e.target.value; state.page = 0; renderRows(); });
     $("#prev").addEventListener("click", () => { state.page--; renderRows(true); });
     $("#next").addEventListener("click", () => { state.page++; renderRows(true); });
     $("thead", $("#view")).addEventListener("click", (e) => {
@@ -373,6 +400,7 @@ dialog::backdrop { background: rgba(10, 18, 32, 0.45); }
     const q = state.q.trim().toLowerCase(), cur = state.summary.currency;
     let list = state.rows;
     if (state.series) list = list.filter((r) => r.series === state.series);
+    if (state.sector) list = list.filter((r) => r.sector === state.sector);
     if (q) list = list.filter((r) => r.name.toLowerCase().includes(q) || r.symbol.toLowerCase().includes(q) || (r.isin || "").toLowerCase() === q);
     const key = state.sort;
     const val = (r) => (key === "range" ? rangePos(r) : key === "name" ? r.name.toLowerCase() : r[key] ?? -Infinity);
@@ -389,8 +417,9 @@ dialog::backdrop { background: rgba(10, 18, 32, 0.45); }
       <td class="num pct ${dir(r.change_pct)}">${pct(r.change_pct)}</td>
       <td class="num col-wide">${compact(r.volume, cur)}</td>
       <td class="num col-wide">${compactMoney(r.value, cur)}</td>
+      ${state.hasCap ? `<td class="num col-wide">${r.market_cap ? compactMoney(r.market_cap, cur) : "–"}</td>` : ""}
       <td class="col-wide"><div class="range" title="${money(r.low_52w, cur)} to ${money(r.high_52w, cur)}"><i style="left:${(rangePos(r) * 100).toFixed(1)}%"></i></div></td>
-    </tr>`).join("") || `<tr><td colspan="6" class="empty">No stocks match “${esc(state.q)}”. Try part of the company name, the symbol, or the full ISIN.</td></tr>`;
+    </tr>`).join("") || `<tr><td colspan="${state.hasCap ? 7 : 6}" class="empty">No stocks match${state.q ? ` “${esc(state.q)}”` : " these filters"}. Try part of the company name, the symbol${state.rows.some((r) => r.isin) ? ", or the full ISIN" : ""}.</td></tr>`;
     $("#count").textContent = list.length === state.rows.length ? "" : `${int(list.length)} of ${int(state.rows.length)} stocks match`;
     $("#pageinfo").textContent = list.length ? `${int(state.page * PAGE + 1)}–${int(state.page * PAGE + slice.length)} of ${int(list.length)}` : "";
     $("#prev").disabled = state.page === 0; $("#next").disabled = state.page >= pages - 1;
@@ -411,7 +440,8 @@ dialog::backdrop { background: rgba(10, 18, 32, 0.45); }
     const stat = (k, v) => `<div><dt>${k}</dt><dd>${v}</dd></div>`;
     $("#d-stats").innerHTML = stat("Previous close", money(r.prev_close, cur)) + stat("52-week high", money(r.high_52w, cur)) +
       stat("52-week low", money(r.low_52w, cur)) + stat("Volume", r.volume == null ? "–" : int(r.volume)) +
-      stat("Value traded", compactMoney(r.value, cur)) + (r.series ? stat("Series", esc(r.series)) : "") +
+      stat("Value traded", compactMoney(r.value, cur)) + (r.series ? stat(esc(state.index.exchanges.find((e) => e.code === state.ex).series_label || "Series"), esc(r.series)) : "") +
+      (r.sector ? stat("Sector", esc(r.sector)) : "") + (r.market_cap ? stat("Market cap", compactMoney(r.market_cap, cur)) : "") +
       (r.isin ? stat("ISIN", esc(r.isin)) : "") +
       (r.also?.length ? stat("Also listed on", r.also.map((c) => `<a href="#${esc(c.toLowerCase())}" data-also="${esc(c)}" data-isin="${esc(r.isin)}">${esc(c)}</a>`).join(", ")) : "");
     $("#d-chart").innerHTML = `<p class="sub">Loading chart…</p>`; $("#d-readout").textContent = "";
@@ -419,6 +449,7 @@ dialog::backdrop { background: rgba(10, 18, 32, 0.45); }
     try {
       const h = await getJSON(`${state.ex}/hist/${r.bucket}.json`);
       if (state.stock !== r) return;
+      if (h.missing) { $("#d-chart").innerHTML = `<p class="sub">This preview only includes chart history for a few large stocks. The live site has charts for every stock.</p>`; return; }
       if (h.synthetic) state.points = synthHistory(r, s.as_of);
       else {
         const series = h.series[r.symbol], t0 = Date.parse(h.t0 + "T00:00:00Z");
@@ -483,14 +514,14 @@ dialog::backdrop { background: rgba(10, 18, 32, 0.45); }
         <td class="num">${st.days_stored ? int(st.days_stored) : "–"}</td>
         <td>${st.last_attempt ? esc(dtFmt.format(new Date(st.last_attempt))) : "–"}</td>
         <td>${st.last_success ? esc(dtFmt.format(new Date(st.last_success))) : "–"}</td>
-        <td class="err">${errs.length ? errs.map(esc).join("<br>") : "<span class='sub'>None</span>"}</td>
+        <td class="err">${errs.length ? errs.map(esc).join("<br>") : "<span class='sub'>None</span>"}${(st.notes || []).length ? `<br><span class="sub">${st.notes.map(esc).join("<br>")}</span>` : ""}</td>
       </tr>`;
     }).join("");
     $("#view").innerHTML = `<section aria-labelledby="st-h">
       <div class="ex-head"><h2 id="st-h">Data status</h2><p>Site built ${esc(dtFmt.format(new Date(state.index.generated_at)))}</p></div>
       ${message ? `<p class="empty">${esc(message)}</p>` : ""}
       <div class="table-wrap"><table class="status-table">
-        <thead><tr><th>Exchange</th><th>Latest trading day</th><th class="num">Stocks</th><th class="num">Days stored</th><th>Last check</th><th>Last new data</th><th>Recent errors</th></tr></thead>
+        <thead><tr><th>Exchange</th><th>Latest trading day</th><th class="num">Stocks</th><th class="num">Days stored</th><th>Last check</th><th>Last new data</th><th>Recent errors and notes</th></tr></thead>
         <tbody>${rows}</tbody></table></div>
       <p class="sub" style="margin-top:14px">A yellow dot means recent errors or no new trading day for more than five days. Errors that clear on the next run were usually a file published late or a brief block by the exchange’s website.</p>
     </section>`;
@@ -528,7 +559,6 @@ dialog::backdrop { background: rgba(10, 18, 32, 0.45); }
       $("#view").innerHTML = `<p class="empty">The site’s data hasn’t been built yet (${esc(err.message)}). Open the repository’s Actions tab and run “Update India” once.</p>`;
       return;
     }
-    $("#demo-banner").hidden = !(P && P.demo);
     route();
   })();
 })();

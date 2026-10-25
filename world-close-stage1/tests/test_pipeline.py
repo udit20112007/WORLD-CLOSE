@@ -4,6 +4,7 @@ import importlib
 import json
 import os
 import shutil
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -127,7 +128,7 @@ class PipelineTests(unittest.TestCase):
         self.build_site.build()
         out = self.build_site.SITE_DATA
         index = json.loads((out / "exchanges.json").read_text())
-        self.assertEqual([e["code"] for e in index["exchanges"]], ["NSE", "BSE"])
+        self.assertEqual([e["code"] for e in index["exchanges"] if e["available"]], ["NSE", "BSE"])
         s = json.loads((out / "NSE" / "summary.json").read_text())
         self.assertEqual(s["as_of"], "2026-10-23")
         f = {k: i for i, k in enumerate(s["fields"])}
@@ -141,3 +142,139 @@ class PipelineTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class USTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        os.environ["WC_DATA_DIR"] = str(self.tmp / "data")
+        import pipeline.store, pipeline.build_site, pipeline.run
+        importlib.reload(pipeline.store)
+        importlib.reload(pipeline.build_site)
+        importlib.reload(pipeline.run)
+        pipeline.build_site.SITE_DATA = self.tmp / "site_data"
+        self.store, self.build_site, self.run = pipeline.store, pipeline.build_site, pipeline.run
+        self.cfg = self.run.load_config()
+        self.payload = json.loads((FIX / "nasdaq_screener.json").read_text())
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp)
+        os.environ.pop("WC_DATA_DIR", None)
+
+    def test_parse_screener(self):
+        from pipeline.sources import nasdaq
+        df = nasdaq.parse(self.payload, self.cfg["NASDAQ"]).set_index("symbol")
+        self.assertNotIn("NOPRICE", df.index)                       # no price: dropped
+        self.assertAlmostEqual(df.at["AAPL", "close"], 262.24)
+        self.assertAlmostEqual(df.at["AAPL", "prev_close"], 259.13)  # last minus net change
+        self.assertAlmostEqual(df.at["MSFT", "prev_close"], 524.40)
+        self.assertEqual(df.at["AAPL", "market_cap"], 3_891_232_000_000)
+        self.assertEqual(df.at["AAPL", "sector"], "Technology")
+        self.assertTrue(pd_isna(df.at["XYZU", "market_cap"]))       # 0.00 means unknown
+        self.assertEqual(df.at["ABCDW", "series"], "Warrant")
+        self.assertEqual(df.at["XYZU", "series"], "Unit")
+        self.assertEqual(df.at["BAC^K", "series"], "Preferred")
+        self.assertEqual(df.at["TSM", "series"], "ADR")
+        self.assertEqual(df.at["AAPL", "series"], "Common")
+        self.assertEqual(nasdaq.to_yahoo("BRK/B"), "BRK-B")
+        self.assertEqual(nasdaq.to_yahoo("BAC^K"), "BAC-PK")
+
+    def test_bad_response_is_clear(self):
+        from pipeline.sources import nasdaq
+        with self.assertRaisesRegex(ValueError, "Unrecognised screener response"):
+            nasdaq.parse({"data": None, "status": {"rCode": 400}}, self.cfg["NYSE"])
+
+    def test_session_day(self):
+        from zoneinfo import ZoneInfo
+        ny, cfg = ZoneInfo("America/New_York"), self.cfg["NYSE"]
+        at = lambda y, m, d, h, mi: dt.datetime(y, m, d, h, mi, tzinfo=ny)
+        self.assertIsNone(self.run.session_day(cfg, at(2026, 10, 23, 11, 0)))       # market open
+        self.assertIsNone(self.run.session_day(cfg, at(2026, 10, 23, 16, 10)))      # just closed
+        self.assertEqual(self.run.session_day(cfg, at(2026, 10, 23, 19, 0)), dt.date(2026, 10, 23))
+        self.assertEqual(self.run.session_day(cfg, at(2026, 10, 25, 9, 0)), dt.date(2026, 10, 23))  # Sunday
+
+    def _run_latest(self, when, payload=None):
+        from pipeline.sources import nasdaq
+        cfg = self.cfg["NASDAQ"]
+        with mock.patch.object(self.run, "local_now", lambda tz: when), \
+             mock.patch.object(nasdaq, "fetch", lambda day, c: nasdaq.parse(payload or self._bigger(), c)):
+            return self.run.update_exchange("NASDAQ", cfg, 0)
+
+    def _bigger(self, bump=0.0):
+        p = json.loads(json.dumps(self.payload))
+        base = p["data"]["rows"][0]
+        p["data"]["rows"] += [{**base, "symbol": f"S{i:03d}", "lastsale": f"${10 + i + bump:.2f}",
+                               "volume": str(1000 + i + int(bump * 100))} for i in range(60)]
+        return p
+
+    def test_latest_only_saves_then_detects_holiday(self):
+        from zoneinfo import ZoneInfo
+        ny = ZoneInfo("America/New_York")
+        self.assertTrue(self._run_latest(dt.datetime(2026, 10, 22, 19, 0, tzinfo=ny), self._bigger(0)))
+        self.assertEqual(self.store.stored_days("NASDAQ"), [dt.date(2026, 10, 22)])
+        # Next day the screener still shows the same session (a holiday): nothing saved
+        self._run_latest(dt.datetime(2026, 10, 23, 19, 0, tzinfo=ny), self._bigger(0))
+        self.assertEqual(self.store.stored_days("NASDAQ"), [dt.date(2026, 10, 22)])
+        self.assertIn("holiday", " ".join(self.store.read_status("NASDAQ")["notes"]))
+        # A real new session is saved
+        self._run_latest(dt.datetime(2026, 10, 26, 19, 0, tzinfo=ny), self._bigger(0.5))
+        self.assertEqual(self.store.stored_days("NASDAQ")[-1], dt.date(2026, 10, 26))
+        # During market hours nothing is saved
+        self._run_latest(dt.datetime(2026, 10, 27, 11, 0, tzinfo=ny), self._bigger(1.0))
+        self.assertNotIn(dt.date(2026, 10, 27), self.store.stored_days("NASDAQ"))
+
+    def test_backfill_merges_without_overwriting(self):
+        import pandas as pd
+        from pipeline.sources import nasdaq
+        from zoneinfo import ZoneInfo
+        self._run_latest(dt.datetime(2026, 10, 23, 19, 0, tzinfo=ny_tz()), self._bigger(0))
+        latest = self.store.load_day("NASDAQ", dt.date(2026, 10, 23))
+        # An existing earlier day that already has AAPL
+        self.store.save_day("NASDAQ", dt.date(2026, 10, 21), latest[latest.symbol == "AAPL"].assign(close=111.0))
+
+        days_idx = pd.bdate_range("2026-10-19", "2026-10-22")
+        def fake_download(tickers, **kw):
+            import numpy as np
+            cols, data = [], []
+            for t in tickers:
+                if t == "ABCDW":
+                    raise AssertionError("warrants should not be requested")
+                for f in ["Open", "High", "Low", "Close", "Adj Close", "Volume"]:
+                    cols.append((t, f)); data.append(np.linspace(50, 53, len(days_idx)))
+            return pd.DataFrame(np.array(data).T, index=days_idx, columns=pd.MultiIndex.from_tuples(cols))
+        fake_yf = mock.Mock(download=fake_download)
+        cfg = self.cfg["NASDAQ"]
+        with mock.patch.dict(sys.modules, {"yfinance": fake_yf}), \
+             mock.patch.object(nasdaq.time, "sleep", lambda s: None), \
+             mock.patch.object(self.run, "local_now", lambda tz: dt.datetime(2026, 10, 23, 19, 0, tzinfo=ny_tz())):
+            self.run.update_latest_only("NASDAQ", cfg, nasdaq, 7)
+        stored = self.store.stored_days("NASDAQ")
+        self.assertEqual(stored, [dt.date(2026, 10, d) for d in (19, 20, 21, 22, 23)])
+        d21 = self.store.load_day("NASDAQ", dt.date(2026, 10, 21)).set_index("symbol")
+        self.assertEqual(d21.at["AAPL", "close"], 111.0)              # existing row kept
+        self.assertIn("MSFT", d21.index)                               # missing stock added
+        self.assertIn("BRK/B", d21.index)                              # mapped back from BRK-B
+        self.assertIn("Backfill", " ".join(self.store.read_status("NASDAQ")["notes"]))
+
+    def test_india_files_without_new_columns_still_load(self):
+        import pandas as pd
+        path = self.store.day_file("NSE", dt.date(2026, 10, 23))
+        path.parent.mkdir(parents=True)
+        pd.DataFrame([{"symbol": "INFY", "name": "Infosys", "isin": "INE009A01021", "series": "EQ", "open": 1, "high": 2,
+                       "low": 1, "close": 1.5, "prev_close": 1.4, "volume": 10, "value": 15, "trades": 1}]
+                     ).to_csv(path, index=False, compression="gzip")
+        df = self.store.load_days("NSE", dt.date(2026, 1, 1))
+        self.assertEqual(df.iloc[0]["sector"], "")
+        self.build_site.build()
+        s = json.loads((self.build_site.SITE_DATA / "NSE" / "summary.json").read_text())
+        self.assertIn("market_cap", s["fields"])
+
+
+def pd_isna(v):
+    import pandas as pd
+    return pd.isna(v)
+
+
+def ny_tz():
+    from zoneinfo import ZoneInfo
+    return ZoneInfo("America/New_York")

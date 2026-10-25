@@ -13,6 +13,8 @@ import sys
 import time
 from zoneinfo import ZoneInfo
 
+import pandas as pd
+
 from .common import NotPublished, load_config
 from .sources import SOURCES
 from . import store
@@ -41,8 +43,99 @@ def candidate_days(have: set[dt.date], today: dt.date, backfill_days: int) -> li
     return days
 
 
+REPEAT_THRESHOLD = 0.9   # share of identical closes+volumes that means "same session as before"
+SETTLE_MINUTES = 30      # wait this long after the close before trusting latest-only data
+
+
+def session_day(cfg: dict, now: dt.datetime) -> dt.date | None:
+    """The trading day a latest-only source is showing right now, or None while the market is open."""
+    day = now.date()
+    if day.weekday() >= 5:                       # weekend: Friday's session
+        return day - dt.timedelta(days=day.weekday() - 4)
+    hh, mm = map(int, cfg.get("close_time", "16:00").split(":"))
+    settled = (dt.datetime.combine(day, dt.time(hh, mm)) + dt.timedelta(minutes=SETTLE_MINUTES)).time()
+    if now.time() < settled:
+        return None                              # session still running: prices aren't closes yet
+    return day
+
+
+def is_repeat(new: "pd.DataFrame", old: "pd.DataFrame") -> bool:
+    """True if `new` is the same session as `old` (a market holiday repeats the last close)."""
+    m = new[["symbol", "close", "volume"]].merge(old[["symbol", "close", "volume"]], on="symbol")
+    if len(m) < 0.5 * len(new):
+        return False
+    same = (m["close_x"].round(4) == m["close_y"].round(4)) & (m["volume_x"] == m["volume_y"])
+    return same.mean() >= REPEAT_THRESHOLD
+
+
+def local_now(tz: str) -> dt.datetime:
+    """Current time in an exchange's timezone (a separate function so tests can set the clock)."""
+    return dt.datetime.now(ZoneInfo(tz))
+
+
+def update_latest_only(code: str, cfg: dict, source, backfill_days: int) -> bool:
+    now = local_now(cfg["timezone"])
+    day = session_day(cfg, now)
+    have = store.stored_days(code)
+    saved, errors, notes = [], [], []
+
+    if day is None:
+        notes.append("Market still open; nothing saved.")
+    elif day in have:
+        notes.append(f"{day} already saved.")
+    else:
+        try:
+            df = source.fetch(day, cfg)
+            if len(df) < MIN_ROWS:
+                raise ValueError(f"only {len(df)} rows, expected thousands")
+            prev = store.load_day(code, have[-1]) if have else None
+            if prev is not None and is_repeat(df, prev):
+                notes.append(f"Prices are identical to {have[-1]}: market holiday, nothing saved.")
+            else:
+                store.save_day(code, day, df)
+                saved.append(day)
+                print(f"[{code}] {day}: saved {len(df)} stocks")
+        except NotPublished as exc:
+            notes.append(str(exc))
+        except Exception as exc:
+            errors.append(f"{day}: {exc}")
+            print(f"[{code}] {day}: ERROR {exc}", file=sys.stderr)
+
+    if backfill_days and hasattr(source, "backfill"):
+        have = store.stored_days(code)
+        if have:
+            latest = store.load_day(code, have[-1])
+            start = have[-1] - dt.timedelta(days=backfill_days)
+            print(f"[{code}] backfilling {start} to {have[-1]} from Yahoo for {len(latest)} stocks…")
+            days, ok, bf_errors = source.backfill(latest, start, have[-1] - dt.timedelta(days=1))
+            errors.extend(bf_errors[-3:])
+            for d, rows in sorted(days.items()):
+                existing = store.load_day(code, d)
+                if existing is not None:   # keep what we have, add stocks it was missing
+                    rows = pd.concat([existing, rows[~rows["symbol"].isin(existing["symbol"])]], ignore_index=True)
+                store.save_day(code, d, rows)
+            notes.append(f"Backfill: {ok} of {len(latest)} stocks returned history, {len(days)} days written.")
+            print(f"[{code}] {notes[-1]}")
+        else:
+            errors.append("Backfill skipped: no current day saved yet to take the stock list from.")
+
+    for n in notes:
+        print(f"[{code}] {n}")
+    have = store.stored_days(code)
+    fields = {"last_attempt": now_utc(), "new_days": len(saved), "errors": errors[-6:], "notes": notes[-4:]}
+    if saved:
+        fields["last_success"] = now_utc()
+    if have:
+        fields["last_trading_day"] = have[-1].isoformat()
+        fields["days_stored"] = len(have)
+    store.write_status(code, **fields)
+    return not errors or bool(saved)
+
+
 def update_exchange(code: str, cfg: dict, backfill_days: int) -> bool:
     source = SOURCES[cfg["source"]]
+    if getattr(source, "LATEST_ONLY", False):
+        return update_latest_only(code, cfg, source, backfill_days)
     today = dt.datetime.now(ZoneInfo(cfg["timezone"])).date()
     days = candidate_days(set(store.stored_days(code)), today, backfill_days)
     print(f"[{code}] checking {len(days)} day(s): {days[0] if days else '-'} to {days[-1] if days else '-'}")
