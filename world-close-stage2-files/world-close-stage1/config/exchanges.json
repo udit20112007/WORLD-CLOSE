@@ -1,0 +1,83 @@
+{
+  "NSE": {
+    "name": "National Stock Exchange of India",
+    "short": "NSE",
+    "country": "India",
+    "city": "Mumbai",
+    "region": "Asia-Pacific",
+    "currency": "INR",
+    "timezone": "Asia/Kolkata",
+    "source": "nse",
+    "series": [
+      "EQ",
+      "BE",
+      "BZ",
+      "SM",
+      "ST",
+      "SZ"
+    ],
+    "enabled": true,
+    "series_label": "Series"
+  },
+  "BSE": {
+    "name": "BSE (Bombay Stock Exchange)",
+    "short": "BSE",
+    "country": "India",
+    "city": "Mumbai",
+    "region": "Asia-Pacific",
+    "currency": "INR",
+    "timezone": "Asia/Kolkata",
+    "source": "bse",
+    "exclude_series": [
+      "F",
+      "G",
+      "DT",
+      "IF",
+      "IT"
+    ],
+    "enabled": true,
+    "series_label": "Group"
+  },
+  "NYSE": {
+    "name": "New York Stock Exchange",
+    "short": "NYSE",
+    "country": "United States",
+    "city": "New York",
+    "screener_exchange": "NYSE",
+    "region": "Americas",
+    "currency": "USD",
+    "timezone": "America/New_York",
+    "source": "nasdaq_screener",
+    "close_time": "16:00",
+    "enabled": true,
+    "series_label": "Type"
+  },
+  "NASDAQ": {
+    "name": "Nasdaq",
+    "short": "Nasdaq",
+    "country": "United States",
+    "city": "New York",
+    "screener_exchange": "NASDAQ",
+    "region": "Americas",
+    "currency": "USD",
+    "timezone": "America/New_York",
+    "source": "nasdaq_screener",
+    "close_time": "16:00",
+    "enabled": true,
+    "series_label": "Type"
+  },
+  "NYSEAM": {
+    "name": "NYSE American",
+    "short": "NYSE American",
+    "country": "United States",
+    "city": "New York",
+    "screener_exchange": "AMEX",
+    "region": "Americas",
+    "currency": "USD",
+    "timezone": "America/New_York",
+    "source": "nasdaq_screener",
+    "close_time": "16:00",
+    "enabled": true,
+    "series_label": "Type"
+  }
+}
