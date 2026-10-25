@@ -1,0 +1,9 @@
+{
+  "last_attempt": "2026-10-25T19:21:05Z",
+  "new_days": 0,
+  "errors": [
+    "2026-10-23: East Money download failed: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))",
+    "Backfill skipped: no current day saved yet to take the stock list from."
+  ],
+  "notes": []
+}
