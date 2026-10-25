@@ -149,7 +149,8 @@
     "open_time": "08:30",
     "english_names": {
       "yahoo_exchange": "TAI",
-      "etfs": true
+      "etfs": true,
+      "twse_company_info": true
     }
   },
   "KOSPI": {

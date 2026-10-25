@@ -681,3 +681,37 @@ class YahooScreenAndNamesTests(unittest.TestCase):
 def pd_bdays(a, b):
     import pandas as pd
     return [d.date() for d in pd.bdate_range(a, b)]
+
+
+class TaiwanNamesTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        os.environ["WC_DATA_DIR"] = str(self.tmp / "data")
+        import pipeline.store, pipeline.names, pipeline.run
+        for m in (pipeline.store, pipeline.names, pipeline.run):
+            importlib.reload(m)
+        self.names, self.run = pipeline.names, pipeline.run
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp)
+        os.environ.pop("WC_DATA_DIR", None)
+
+    def test_twse_company_info_then_yahoo(self):
+        from pipeline.sources import yahoo_screen
+        twse_rows = [{"出表日期": "1151023", "公司代號": "2330", "公司名稱": "台灣積體電路製造股份有限公司", "公司簡稱": "台積電",
+                      "英文簡稱": "TSMC"},
+                     {"公司代號": "2317", "公司簡稱": "鴻海", "英文簡稱": "Hon  Hai"},
+                     {"公司代號": "9999", "公司簡稱": "無英文", "英文簡稱": ""}]
+        yahoo = [{"symbol": "2330.TW", "longName": "Taiwan Semiconductor Manufacturing Company Limited"},
+                 {"symbol": "0050.TW", "longName": "Yuanta Taiwan Top 50 ETF"}]
+        cfg = self.run.load_config()["TWSE"]
+        with mock.patch.object(self.names, "get_bytes", create=True), \
+             mock.patch("pipeline.common.get_bytes", lambda sess, url, **kw: json.dumps(twse_rows).encode()), \
+             mock.patch.object(yahoo_screen, "screen_all", lambda ex, qt="EQUITY": yahoo if qt == "EQUITY" else []):
+            note = self.names.refresh("TWSE", cfg, ["2330", "2317", "9999", "0050"], dt.date(2026, 10, 26))
+        names = self.names.load("TWSE")
+        self.assertEqual(names["2330"], "Taiwan Semiconductor Manufacturing Company Limited")   # Yahoo's fuller name wins
+        self.assertEqual(names["2317"], "Hon Hai")                                               # TWSE fills the gap
+        self.assertEqual(names["0050"], "Yuanta Taiwan Top 50 ETF")
+        self.assertNotIn("9999", names)
+        self.assertEqual(note, "English names: 3 of 4 stocks.")

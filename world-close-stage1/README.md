@@ -72,7 +72,8 @@ Sources:
 
 Shanghai, Shenzhen and Taiwan publish company names only in Chinese. Each
 week the pipeline fetches every company's official English name from Yahoo
-Finance's screener and saves it in `data/<EXCHANGE>/english_names.json`. The
+Finance's screener (for Taiwan, also the exchange's own English short names,
+since Yahoo's screener carries few Taiwanese companies) and saves it in `data/<EXCHANGE>/english_names.json`. The
 site shows the English name with the original beside it, and searching works
 in either language. A stock with no English name on Yahoo keeps its original
 name. To turn this on for another exchange, add for example
@@ -162,7 +163,7 @@ Actions tab.
 
 ```bash
 pip install -r requirements.txt
-python -m unittest discover tests               # 37 tests using sample exchange files
+python -m unittest discover tests               # 38 tests using sample exchange files
 python -m pipeline.run update --exchanges NSE BSE
 python -m pipeline.run build
 cd site && python -m http.server 8000           # open http://localhost:8000
