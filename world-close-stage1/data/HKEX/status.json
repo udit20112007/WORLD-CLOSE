@@ -1,9 +1,12 @@
 {
-  "last_attempt": "2026-10-25T19:36:13Z",
-  "new_days": 0,
-  "errors": [
-    "2026-10-23: East Money download failed: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))",
-    "Backfill skipped: no current day saved yet to take the stock list from."
+  "last_attempt": "2026-10-25T20:04:44Z",
+  "new_days": 1,
+  "errors": [],
+  "notes": [
+    "Prices from sina.",
+    "Backfill: 2775 of 2805 stocks returned history, 248 days written."
   ],
-  "notes": []
+  "last_success": "2026-10-25T20:04:44Z",
+  "last_trading_day": "2026-10-23",
+  "days_stored": 249
 }
