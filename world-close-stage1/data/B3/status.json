@@ -1,9 +1,9 @@
 {
-  "last_attempt": "2026-10-25T19:28:49Z",
-  "new_days": 252,
+  "last_attempt": "2026-10-25T19:42:41Z",
+  "new_days": 0,
   "errors": [],
   "notes": [
-    "Backfill: 252 days from the full-range download."
+    "Backfill: 0 days from the full-range download."
   ],
   "last_success": "2026-10-25T19:28:49Z",
   "last_trading_day": "2026-10-23",

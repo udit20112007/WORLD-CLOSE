@@ -1,5 +1,5 @@
 {
-  "last_attempt": "2026-10-25T19:23:15Z",
+  "last_attempt": "2026-10-25T19:38:48Z",
   "new_days": 0,
   "errors": [
     "Needs setup: add your free KRX OpenAPI key as the GitHub secret KRX_OPENAPI_KEY (see README)"
