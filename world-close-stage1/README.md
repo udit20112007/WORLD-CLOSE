@@ -63,7 +63,7 @@ Sources:
 | BSE | Daily equity bhavcopy (UDiFF format), `bseindia.com` | All equity groups (A, B, T, X, Z, M, ...). Debt groups are excluded. |
 | NYSE, Nasdaq, NYSE American | Nasdaq's public stock screener, `api.nasdaq.com` | Every listed stock with last price, change, volume, sector and market cap. Types: Common, ADR, Preferred, Warrant, Unit, Right. |
 
-| Shanghai, Shenzhen, Hong Kong | East Money quote lists, via the AKShare library | Latest session only; Yahoo backfill for history. Mainland boards: Main Board, STAR Market, ChiNext. Names are in Chinese. |
+| Shanghai, Shenzhen, Hong Kong | Sina Finance market lists via the AKShare library, with East Money as a fallback | Latest session only; Yahoo backfill for history. Mainland boards: Main Board, STAR Market, ChiNext. Mainland names are in Chinese; Hong Kong names are in English. East Money often refuses connections from outside China, which is why Sina is tried first. |
 | Taiwan | Official TWSE OpenAPI (`STOCK_DAY_ALL`) | Latest session, with its trading date; Yahoo backfill for history. Stocks and ETFs. |
 | KOSPI, KOSDAQ | Official KRX OpenAPI | Any date, so history is native. **Needs a free API key** (see below). Names are in Korean. |
 | B3 (Brazil) | B3's official COTAHIST files | Any date; the backfill uses the annual file (one download per year). Standard-lot shares on the cash market. |
@@ -149,7 +149,7 @@ Actions tab.
 
 ```bash
 pip install -r requirements.txt
-python -m unittest discover tests               # 25 tests using sample exchange files
+python -m unittest discover tests               # 30 tests using sample exchange files
 python -m pipeline.run update --exchanges NSE BSE
 python -m pipeline.run build
 cd site && python -m http.server 8000           # open http://localhost:8000

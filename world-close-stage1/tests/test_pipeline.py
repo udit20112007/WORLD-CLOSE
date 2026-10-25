@@ -455,3 +455,86 @@ class Stage3Tests(unittest.TestCase):
 def ZoneInfoT(name):
     from zoneinfo import ZoneInfo
     return ZoneInfo(name)
+
+
+class SinaTests(unittest.TestCase):
+    def setUp(self):
+        from pipeline.common import load_config
+        from pipeline.sources import eastmoney
+        self.cfg, self.em = load_config(), eastmoney
+        eastmoney._sina_a_cache = None
+
+    def _sina_a(self, lots=False):
+        import pandas as pd
+        f = 1 / 100 if lots else 1
+        return pd.DataFrame([
+            {"代码": "sh600519", "名称": "贵州茅台", "最新价": 1450.0, "涨跌额": 12.0, "涨跌幅": 0.83, "买入": 1449.9,
+             "卖出": 1450.0, "昨收": 1438.0, "今开": 1440.0, "最高": 1455.0, "最低": 1436.0,
+             "成交量": 3100000 * f, "成交额": 4.495e9, "时间戳": "15:00:00"},
+            {"代码": "sz000001", "名称": "平安银行", "最新价": 11.2, "涨跌额": 0.1, "涨跌幅": 0.9, "买入": 11.19,
+             "卖出": 11.2, "昨收": 11.1, "今开": 11.1, "最高": 11.3, "最低": 11.05,
+             "成交量": 90000000 * f, "成交额": 1.008e9, "时间戳": "15:00:00"},
+            {"代码": "sz300750", "名称": "宁德时代", "最新价": 260.0, "涨跌额": -2.0, "涨跌幅": -0.76, "买入": 259.9,
+             "卖出": 260.0, "昨收": 262.0, "今开": 262.0, "最高": 263.0, "最低": 258.0,
+             "成交量": 20000000 * f, "成交额": 5.2e9, "时间戳": "15:00:00"},
+            {"代码": "bj830799", "名称": "北交所股", "最新价": 20.0, "涨跌额": 0.0, "涨跌幅": 0.0, "买入": 20.0,
+             "卖出": 20.0, "昨收": 20.0, "今开": 20.0, "最高": 20.0, "最低": 20.0,
+             "成交量": 1000 * f, "成交额": 20000, "时间戳": "15:00:00"},
+        ])
+
+    def test_sina_a_shares_split_by_exchange_and_cached(self):
+        calls = []
+        fake = mock.Mock(stock_zh_a_spot=lambda: calls.append(1) or self._sina_a())
+        with mock.patch.dict(sys.modules, {"akshare": fake}):
+            sh = self.em.fetch(dt.date(2026, 10, 23), self.cfg["SSE"]).set_index("symbol")
+            sz = self.em.fetch(dt.date(2026, 10, 23), self.cfg["SZSE"]).set_index("symbol")
+        self.assertEqual(list(sh.index), ["600519"])
+        self.assertEqual(sorted(sz.index), ["000001", "300750"])          # Beijing listing excluded
+        self.assertEqual(sz.at["300750", "series"], "ChiNext")
+        self.assertEqual(sh.at["600519", "volume"], 3_100_000)            # already shares: unchanged
+        self.assertEqual(sh.attrs["provider"], "sina")
+        self.assertEqual(len(calls), 1)                                    # one download for both exchanges
+
+    def test_volume_in_lots_is_detected(self):
+        fake = mock.Mock(stock_zh_a_spot=lambda: self._sina_a(lots=True))
+        with mock.patch.dict(sys.modules, {"akshare": fake}):
+            sh = self.em.fetch(dt.date(2026, 10, 23), self.cfg["SSE"]).set_index("symbol")
+        self.assertEqual(sh.at["600519", "volume"], 3_100_000)
+
+    def test_sina_hong_kong_english_names_and_date(self):
+        import pandas as pd
+        hk = pd.DataFrame([
+            {"日期时间": "2026/10/23 16:08:10", "代码": "00700", "中文名称": "腾讯控股", "英文名称": "TENCENT",
+             "交易类型": "EQTY", "最新价": 620.0, "涨跌额": 5.0, "涨跌幅": 0.81, "昨收": 615.0, "今开": 615.0,
+             "最高": 625.0, "最低": 612.0, "成交量": 15000000, "成交额": 9.3e9, "买一": 619.5, "卖一": 620.0},
+            {"日期时间": "2026/10/23 16:08:10", "代码": "08001", "中文名称": "创业板股", "英文名称": "GEM CO",
+             "交易类型": "EQTY", "最新价": 0.25, "涨跌额": 0.0, "涨跌幅": 0.0, "昨收": 0.25, "今开": 0.25,
+             "最高": 0.26, "最低": 0.24, "成交量": 100000, "成交额": 25000, "买一": 0.24, "卖一": 0.25},
+        ])
+        fake = mock.Mock(stock_hk_spot=lambda: hk)
+        with mock.patch.dict(sys.modules, {"akshare": fake}):
+            df = self.em.fetch(dt.date(2026, 10, 26), self.cfg["HKEX"])
+        self.assertEqual(df.attrs["session_date"], dt.date(2026, 10, 23))
+        d = df.set_index("symbol")
+        self.assertEqual(d.at["00700", "name"], "TENCENT")
+        self.assertEqual(d.at["08001", "series"], "GEM")
+
+    def test_falls_back_to_east_money(self):
+        import pandas as pd
+        def sina_blocked():
+            raise ConnectionError("Remote end closed connection without response")
+        em = pd.DataFrame([{"代码": "600519", "名称": "贵州茅台", "最新价": 1450.0, "今开": 1440.0, "最高": 1455.0,
+                            "最低": 1436.0, "昨收": 1438.0, "成交量": 31000, "成交额": 4.495e9, "总市值": 1.82e12}])
+        fake = mock.Mock(stock_zh_a_spot=sina_blocked, stock_sh_a_spot_em=lambda: em)
+        with mock.patch.dict(sys.modules, {"akshare": fake}):
+            df = self.em.fetch(dt.date(2026, 10, 23), self.cfg["SSE"])
+        self.assertEqual(df.attrs["provider"], "eastmoney")
+        self.assertEqual(df.iloc[0]["market_cap"], 1.82e12)
+
+    def test_all_providers_failing_is_one_clear_error(self):
+        def blocked():
+            raise ConnectionError("Remote end closed connection")
+        fake = mock.Mock(stock_zh_a_spot=blocked, stock_sh_a_spot_em=blocked)
+        with mock.patch.dict(sys.modules, {"akshare": fake}):
+            with self.assertRaisesRegex(RuntimeError, "all providers failed; sina: .* eastmoney: "):
+                self.em.fetch(dt.date(2026, 10, 23), self.cfg["SSE"])

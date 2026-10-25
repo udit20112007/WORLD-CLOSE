@@ -112,6 +112,8 @@ def update_latest_only(code: str, cfg: dict, source, backfill_days: int) -> bool
             df = source.fetch(day, cfg)
             if len(df) < MIN_ROWS:
                 raise ValueError(f"only {len(df)} rows, expected thousands")
+            if df.attrs.get("provider"):
+                notes.append(f"Prices from {df.attrs['provider']}.")
             reported = df.attrs.get("session_date")   # sources that say which day the prices are for
             if reported and reported != day:
                 notes.append(f"The source reports prices for {reported}.")
