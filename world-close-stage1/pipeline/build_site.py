@@ -1,0 +1,131 @@
+"""Turn stored daily snapshots into the small JSON files the website loads.
+
+    site/data/exchanges.json              list of exchanges, counts, status
+    site/data/<EX>/summary.json           every stock's latest close (loaded when you pick the exchange)
+    site/data/<EX>/hist/<n>.json          1-year closes, ~150 stocks per file (loaded when you open a stock)
+"""
+from __future__ import annotations
+
+import datetime as dt
+import json
+import math
+import shutil
+from collections import defaultdict
+
+import pandas as pd
+
+from .common import ROOT, load_config
+from . import store
+
+SITE_DATA = ROOT / "site" / "data"
+BUCKET_SIZE = 150
+STALE_AFTER_DAYS = 30   # a stock not traded for this long is dropped from the list
+HISTORY_DAYS = 370
+
+SUMMARY_FIELDS = ["symbol", "name", "isin", "series", "close", "prev_close", "change_pct",
+                  "high_52w", "low_52w", "volume", "value", "days_ago", "bucket", "also"]
+
+
+def _num(v, digits=2):
+    if v is None or (isinstance(v, float) and (math.isnan(v) or math.isinf(v))):
+        return None
+    return round(float(v), digits)
+
+
+def _latest_rows(code: str):
+    days = store.stored_days(code)
+    if not days:
+        return None, None, None
+    latest = days[-1]
+    df = store.load_days(code, latest - dt.timedelta(days=HISTORY_DAYS))
+    recent = df[df["date"] >= pd.Timestamp(latest - dt.timedelta(days=STALE_AFTER_DAYS))]
+    last = recent.sort_values("date").groupby("symbol", as_index=False).tail(1).copy()
+
+    year = df[df["date"] >= pd.Timestamp(latest - dt.timedelta(days=365))].copy()
+    year["hi"] = year["high"].fillna(year["close"])
+    year["lo"] = year["low"].fillna(year["close"])
+    hl = year.groupby("symbol").agg(high_52w=("hi", "max"), low_52w=("lo", "min"))
+    last = last.join(hl, on="symbol")
+
+    prev = last["prev_close"].where(last["prev_close"] > 0)
+    last["change_pct"] = (last["close"] / prev - 1) * 100
+    last["days_ago"] = (pd.Timestamp(latest) - last["date"]).dt.days
+    last = last.sort_values("symbol").reset_index(drop=True)
+    last["bucket"] = last.index // BUCKET_SIZE
+    return latest, last, df
+
+
+def build() -> None:
+    cfg = load_config()
+    if SITE_DATA.exists():
+        shutil.rmtree(SITE_DATA)
+    SITE_DATA.mkdir(parents=True)
+
+    built = {}
+    for code, c in cfg.items():
+        if c.get("enabled"):
+            built[code] = _latest_rows(code)
+
+    # Which exchanges each ISIN trades on, to show "also listed on"
+    isin_map: dict[str, set[str]] = defaultdict(set)
+    for code, (latest, last, _) in built.items():
+        if last is not None:
+            for isin in last["isin"]:
+                if isin:
+                    isin_map[isin].add(code)
+
+    index = {"generated_at": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+             "exchanges": []}
+
+    for code, (latest, last, history) in built.items():
+        c = cfg[code]
+        status = store.read_status(code)
+        entry = {"code": code, **{k: c[k] for k in ("name", "short", "country", "city", "region", "currency")},
+                 "status": status, "available": last is not None}
+        if last is None:
+            index["exchanges"].append(entry)
+            continue
+
+        out_dir = SITE_DATA / code
+        (out_dir / "hist").mkdir(parents=True)
+
+        rows = []
+        for r in last.itertuples(index=False):
+            also = sorted(isin_map.get(r.isin, set()) - {code}) if r.isin else []
+            rows.append([r.symbol, r.name, r.isin, r.series, _num(r.close), _num(r.prev_close),
+                         _num(r.change_pct, 3), _num(r.high_52w), _num(r.low_52w),
+                         None if pd.isna(r.volume) else int(r.volume), _num(r.value, 0),
+                         int(r.days_ago), int(r.bucket), also])
+        today_rows = last[last["days_ago"] == 0]
+        breadth = {
+            "up": int((today_rows["change_pct"] > 0).sum()),
+            "down": int((today_rows["change_pct"] < 0).sum()),
+            "flat": int((today_rows["change_pct"] == 0).sum()),
+        }
+        summary = {"code": code, "as_of": latest.isoformat(), "currency": c["currency"],
+                   "fields": SUMMARY_FIELDS, "rows": rows, "breadth": breadth}
+        (out_dir / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, separators=(",", ":")),
+                                              encoding="utf-8")
+
+        # History buckets
+        t0 = history["date"].min()
+        hist = history[history["symbol"].isin(last["symbol"])][["symbol", "date", "close"]]
+        hist = hist.dropna().sort_values("date")
+        bucket_of = dict(zip(last["symbol"], last["bucket"]))
+        buckets: dict[int, dict] = defaultdict(dict)
+        for sym, g in hist.groupby("symbol"):
+            buckets[bucket_of[sym]][sym] = {
+                "d": [int((d - t0).days) for d in g["date"]],
+                "c": [_num(v) for v in g["close"]],
+            }
+        for b, series in buckets.items():
+            (out_dir / "hist" / f"{b}.json").write_text(
+                json.dumps({"t0": t0.strftime("%Y-%m-%d"), "series": series}, separators=(",", ":")),
+                encoding="utf-8")
+
+        entry.update({"as_of": latest.isoformat(), "count": len(rows), "traded_today": len(today_rows),
+                      "breadth": breadth})
+        index["exchanges"].append(entry)
+        print(f"[{code}] {len(rows)} stocks as of {latest}, {len(buckets)} history files")
+
+    (SITE_DATA / "exchanges.json").write_text(json.dumps(index, ensure_ascii=False, indent=1), encoding="utf-8")

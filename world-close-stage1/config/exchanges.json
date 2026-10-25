@@ -1,0 +1,26 @@
+{
+  "NSE": {
+    "name": "National Stock Exchange of India",
+    "short": "NSE",
+    "country": "India",
+    "city": "Mumbai",
+    "region": "Asia-Pacific",
+    "currency": "INR",
+    "timezone": "Asia/Kolkata",
+    "source": "nse",
+    "series": ["EQ", "BE", "BZ", "SM", "ST", "SZ"],
+    "enabled": true
+  },
+  "BSE": {
+    "name": "BSE (Bombay Stock Exchange)",
+    "short": "BSE",
+    "country": "India",
+    "city": "Mumbai",
+    "region": "Asia-Pacific",
+    "currency": "INR",
+    "timezone": "Asia/Kolkata",
+    "source": "bse",
+    "exclude_series": ["F", "G", "DT", "IF", "IT"],
+    "enabled": true
+  }
+}
