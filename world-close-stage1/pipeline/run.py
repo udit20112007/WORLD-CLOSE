@@ -162,6 +162,12 @@ def update_latest_only(code: str, cfg: dict, source, backfill_days: int) -> bool
         else:
             errors.append("Backfill skipped: no current day saved yet to take the stock list from.")
 
+    if hasattr(source, "repair"):
+        try:
+            notes.extend(source.repair(code, cfg, store))
+        except Exception as exc:
+            notes.append(f"Couldn't fill in missing volumes this time ({str(exc)[:120]}).")
+
     for n in notes:
         print(f"[{code}] {n}")
     have = store.stored_days(code)

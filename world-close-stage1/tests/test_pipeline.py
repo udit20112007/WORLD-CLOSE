@@ -361,7 +361,8 @@ class Stage3Tests(unittest.TestCase):
         tw = ZoneInfoT("Asia/Taipei")
         # Run on Monday evening, but the source still says Friday (e.g. Monday was a holiday)
         with mock.patch.object(self.run, "local_now", lambda tz: dt.datetime(2026, 10, 26, 19, 0, tzinfo=tw)), \
-             mock.patch.object(twse, "fetch", lambda day, c: twse.parse(rows, c)):
+             mock.patch.object(twse, "fetch", lambda day, c: twse.parse(rows, c)), \
+             mock.patch.object(self.run, "refresh_names", lambda code, c: None):   # no network in tests
             self.run.update_exchange("TWSE", cfg, 0)
         self.assertEqual(self.store.stored_days("TWSE"), [dt.date(2026, 10, 23)])
 
@@ -715,3 +716,79 @@ class TaiwanNamesTests(unittest.TestCase):
         self.assertEqual(names["0050"], "Yuanta Taiwan Top 50 ETF")
         self.assertNotIn("9999", names)
         self.assertEqual(note, "English names: 3 of 4 stocks.")
+
+
+class KoreaVolumeTests(unittest.TestCase):
+    """Yahoo's screener reports volume 0 for Korean stocks; the daily history has the real number."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        os.environ["WC_DATA_DIR"] = str(self.tmp / "data")
+        import pipeline.store, pipeline.run
+        for m in (pipeline.store, pipeline.run):
+            importlib.reload(m)
+        self.store, self.run = pipeline.store, pipeline.run
+        self.cfg = self.run.load_config()["KOSPI"]
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp)
+        os.environ.pop("WC_DATA_DIR", None)
+
+    def _quotes(self):
+        t = int(dt.datetime(2026, 10, 23, 6, 30, tzinfo=dt.timezone.utc).timestamp())
+        q = [{"symbol": "005930.KS", "longName": "Samsung Electronics Co., Ltd.", "regularMarketPrice": 215500.0,
+              "regularMarketPreviousClose": 214500.0, "regularMarketVolume": 0, "regularMarketTime": t}]
+        q += [{"symbol": f"{100000 + i}.KS", "longName": f"Co {i}", "regularMarketPrice": 1000.0,
+               "regularMarketPreviousClose": 990.0, "regularMarketVolume": 0, "regularMarketTime": t} for i in range(60)]
+        return q
+
+    def _history(self, has_day=True):
+        import pandas as pd
+        from pipeline.common import STANDARD_COLUMNS
+        def fake(latest, start, end, to_yahoo, **kw):
+            if not has_day:
+                return {}, 0, []
+            rows = [{"symbol": s, "close": 215500.0 if s == "005930" else 1000.0, "open": 213000.0,
+                     "high": 216000.0, "low": 212500.0, "volume": 11469322 if s == "005930" else 5000}
+                    for s in latest["symbol"]]
+            return {end: pd.DataFrame(rows).reindex(columns=STANDARD_COLUMNS)}, len(rows), []
+        return fake
+
+    def test_zero_volume_is_unknown_not_zero(self):
+        from pipeline.sources import yahoo_screen
+        df = yahoo_screen.parse(self._quotes(), self.cfg)
+        self.assertTrue(df["volume"].isna().all())
+        self.assertTrue(yahoo_screen.missing_volume(df))
+
+    def test_fetch_fills_volume_from_history(self):
+        from pipeline.sources import yahoo_screen
+        with mock.patch.object(yahoo_screen, "screen_all", lambda ex, qt="EQUITY": self._quotes()), \
+             mock.patch("pipeline.yahoo.backfill", self._history()):
+            df = yahoo_screen.fetch(dt.date(2026, 10, 23), self.cfg)
+        d = df.set_index("symbol")
+        self.assertEqual(d.at["005930", "volume"], 11469322)
+        self.assertEqual(d.at["005930", "value"], round(215500 * 11469322))
+        self.assertEqual(d.at["005930", "open"], 213000.0)
+        self.assertEqual(df.attrs["session_date"], dt.date(2026, 10, 23))        # attrs survive the fill
+
+    def test_history_without_that_day_leaves_volume_blank(self):
+        from pipeline.sources import yahoo_screen
+        with mock.patch.object(yahoo_screen, "screen_all", lambda ex, qt="EQUITY": self._quotes()), \
+             mock.patch("pipeline.yahoo.backfill", self._history(has_day=False)):
+            df = yahoo_screen.fetch(dt.date(2026, 10, 23), self.cfg)
+        self.assertTrue(df["volume"].isna().all())                               # blank, never a false 0
+
+    def test_repair_fixes_a_day_saved_with_zero_volume(self):
+        from pipeline.sources import yahoo_screen
+        import pandas as pd
+        day = dt.date(2026, 10, 23)
+        bad = yahoo_screen.parse(self._quotes(), self.cfg)
+        bad["volume"] = 0.0                                                       # as stored by the old code
+        self.store.save_day("KOSPI", day, bad)
+        with mock.patch.object(yahoo_screen, "screen_all", lambda ex, qt="EQUITY": self._quotes()), \
+             mock.patch("pipeline.yahoo.backfill", self._history()), \
+             mock.patch.object(self.run, "local_now", lambda tz: dt.datetime(2026, 10, 25, 9, 0, tzinfo=ZoneInfoT(tz))):
+            self.run.update_exchange("KOSPI", self.cfg, 0)
+        fixed = self.store.load_day("KOSPI", day).set_index("symbol")
+        self.assertEqual(fixed.at["005930", "volume"], 11469322)
+        self.assertIn("Volume filled in for 2026-10-23", " ".join(self.store.read_status("KOSPI")["notes"]))
