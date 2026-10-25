@@ -792,3 +792,112 @@ class KoreaVolumeTests(unittest.TestCase):
         fixed = self.store.load_day("KOSPI", day).set_index("symbol")
         self.assertEqual(fixed.at["005930", "volume"], 11469322)
         self.assertIn("Volume filled in for 2026-10-23", " ".join(self.store.read_status("KOSPI")["notes"]))
+
+
+class WeekendTests(unittest.TestCase):
+    def test_saudi_weekend_is_friday_and_saturday(self):
+        import pipeline.run as run
+        from zoneinfo import ZoneInfo
+        cfg = {"weekend": [4, 5], "open_time": "09:30", "close_time": "15:00"}
+        riyadh = ZoneInfo("Asia/Riyadh")
+        at = lambda d, h: dt.datetime(2026, 10, d, h, 0, tzinfo=riyadh)
+        self.assertEqual(run.session_day(cfg, at(25, 20)), dt.date(2026, 10, 25))   # Sunday evening: a trading day
+        self.assertEqual(run.session_day(cfg, at(23, 12)), dt.date(2026, 10, 22))   # Friday: Thursday's session
+        self.assertEqual(run.session_day(cfg, at(24, 12)), dt.date(2026, 10, 22))   # Saturday: Thursday's session
+        self.assertEqual(run.session_day(cfg, at(25, 8)), dt.date(2026, 10, 22))    # Sunday before open: Thursday
+        self.assertIsNone(run.session_day(cfg, at(26, 12)))                         # Monday, market open
+        # Everyone else is unchanged
+        self.assertEqual(run.session_day({"close_time": "16:00"}, at(25, 20)), dt.date(2026, 10, 23))
+
+
+class Stage4Tests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        os.environ["WC_DATA_DIR"] = str(self.tmp / "data")
+        import pipeline.store, pipeline.build_site, pipeline.run
+        for m in (pipeline.store, pipeline.build_site, pipeline.run):
+            importlib.reload(m)
+        pipeline.build_site.SITE_DATA = self.tmp / "site_data"
+        self.store, self.build_site, self.run = pipeline.store, pipeline.build_site, pipeline.run
+        self.cfg = self.run.load_config()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp)
+        os.environ.pop("WC_DATA_DIR", None)
+
+    def test_every_yahoo_code_is_valid(self):
+        from yfinance.const import EQUITY_SCREENER_EQ_MAP
+        valid = set().union(*EQUITY_SCREENER_EQ_MAP["exchange"].values())
+        for code, c in self.cfg.items():
+            if c["source"] == "yahoo_screen":
+                codes = c["yahoo_exchange"] if isinstance(c["yahoo_exchange"], list) else [c["yahoo_exchange"]]
+                for y in codes:
+                    self.assertIn(y, valid, f"{code}: unknown Yahoo exchange code {y}")
+                for y in (c.get("venues") or {}):
+                    self.assertIn(y, codes, f"{code}: venue {y} isn't queried")
+
+    def test_every_exchange_is_complete(self):
+        from zoneinfo import ZoneInfo
+        for code, c in self.cfg.items():
+            for key in ("name", "short", "country", "city", "region", "currency", "timezone", "source"):
+                self.assertTrue(c.get(key), f"{code} is missing {key}")
+            ZoneInfo(c["timezone"])
+            self.assertIn(c["region"], ["Asia-Pacific", "Europe", "Middle East & Africa", "Americas"])
+
+    def _euronext_quotes(self):
+        t = int(dt.datetime(2026, 10, 23, 15, 40, tzinfo=dt.timezone.utc).timestamp())
+        q = [
+            {"symbol": "MC.PA", "longName": "LVMH Moët Hennessy Louis Vuitton", "exchange": "PAR", "currency": "EUR",
+             "regularMarketPrice": 640.0, "regularMarketPreviousClose": 630.0, "regularMarketVolume": 500000,
+             "marketCap": 3.2e11, "regularMarketTime": t},
+            {"symbol": "ASML.AS", "longName": "ASML Holding N.V.", "exchange": "AMS", "currency": "EUR",
+             "regularMarketPrice": 900.0, "regularMarketPreviousClose": 890.0, "regularMarketVolume": 800000,
+             "regularMarketTime": t},
+            {"symbol": "EQNR.OL", "longName": "Equinor ASA", "exchange": "OSL", "currency": "NOK",
+             "regularMarketPrice": 260.0, "regularMarketPreviousClose": 258.0, "regularMarketVolume": 4000000,
+             "regularMarketTime": t},
+        ]
+        q += [{"symbol": f"X{i}.PA", "longName": f"Co {i}", "exchange": "PAR", "currency": "EUR", "regularMarketPrice": 10.0,
+               "regularMarketPreviousClose": 10.0, "regularMarketVolume": 100, "regularMarketTime": t} for i in range(60)]
+        return q
+
+    def test_multi_venue_exchange(self):
+        from pipeline.sources import yahoo_screen
+        cfg = self.cfg["EURONEXT"]
+        df = yahoo_screen.parse(self._euronext_quotes(), cfg).set_index("symbol")
+        self.assertIn("MC.PA", df.index)                                # Yahoo's full symbol kept
+        self.assertEqual(df.at["ASML.AS", "series"], "Amsterdam")
+        self.assertEqual(df.at["EQNR.OL", "series"], "Oslo")
+        self.assertEqual(df.at["EQNR.OL", "currency"], "NOK")           # Oslo trades in kroner
+        self.assertEqual(yahoo_screen.to_yahoo_for(cfg)("MC.PA"), "MC.PA")
+        self.assertEqual(yahoo_screen.to_yahoo_for(self.cfg["KOSPI"])("005930"), "005930.KS")   # Korea unchanged
+
+    def test_query_uses_all_venues(self):
+        from pipeline.sources import yahoo_screen
+        seen = []
+        def screen(query, **kw):
+            seen.append(query)
+            return {"quotes": [], "total": 0}
+        fake = mock.Mock(screen=screen, EquityQuery=lambda op, args: (op, args), ETFQuery=None)
+        with mock.patch.dict(sys.modules, {"yfinance": fake}):
+            yahoo_screen.screen_all(self.cfg["EURONEXT"]["yahoo_exchange"])
+            yahoo_screen.screen_all("JPX")
+        self.assertEqual(seen[0], ("is-in", ["exchange", "AMS", "BRU", "ISE", "LIS", "MIL", "OSL", "PAR"]))
+        self.assertEqual(seen[1], ("eq", ["exchange", "JPX"]))
+
+    def test_build_keeps_currency_only_where_it_differs(self):
+        from pipeline.sources import yahoo_screen
+        df = yahoo_screen.parse(self._euronext_quotes(), self.cfg["EURONEXT"])
+        self.store.save_day("EURONEXT", dt.date(2026, 10, 23), df)
+        self.build_site.build()
+        s = json.loads((self.build_site.SITE_DATA / "EURONEXT" / "summary.json").read_text())
+        f = {k: i for i, k in enumerate(s["fields"])}
+        rows = {r[0]: r for r in s["rows"]}
+        self.assertEqual(rows["EQNR.OL"][f["currency"]], "NOK")
+        self.assertIsNone(rows["MC.PA"][f["currency"]])                  # same as the exchange: left out
+
+    def test_old_day_files_without_currency_still_load(self):
+        import pandas as pd
+        path = self.store.day_file("LSE", dt.date(2026, 10, 23)); path.parent.mkdir(parents=True)
+        pd.DataFrame([{"symbol": "SHEL.L", "name": "Shell", "close": 2650.0}]).to_csv(path, index=False, compression="gzip")
+        self.assertEqual(self.store.load_day("LSE", dt.date(2026, 10, 23)).iloc[0]["currency"], "")

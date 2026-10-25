@@ -5,7 +5,11 @@ automatically after each trading day and hosted free on GitHub Pages.
 
 **Covered so far:** every stock on **NSE and BSE** (stage 1), **NYSE, Nasdaq
 and NYSE American** (stage 2), and **Shanghai, Shenzhen, Hong Kong, Taiwan,
-KOSPI, KOSDAQ and B3 Brazil** (stage 3). More exchanges plug in as separate
+KOSPI, KOSDAQ and B3 Brazil** (stage 3), and **Tokyo, Australia, Singapore,
+Malaysia, Thailand, Indonesia, London, Euronext, Xetra, SIX, Nasdaq Nordic,
+Madrid, Warsaw, Istanbul, Saudi Arabia, Dubai, Tel Aviv, Johannesburg,
+Toronto, the Canadian Securities Exchange and Mexico** (stage 4): 33
+exchanges in all. More exchanges plug in as separate
 sources (see the roadmap below).
 
 What the site shows for each exchange:
@@ -67,6 +71,26 @@ Sources:
 | Taiwan | Official TWSE OpenAPI (`STOCK_DAY_ALL`) | Latest session, with its trading date; Yahoo backfill for history. Stocks and ETFs. |
 | KOSPI, KOSDAQ | Yahoo Finance's stock screener | Latest session, with English names and market caps; Yahoo backfill for history. No sign-up needed. (A KRX OpenAPI source is also included; see below.) |
 | B3 (Brazil) | B3's official COTAHIST files | Any date; the backfill uses the annual file (one download per year). Standard-lot shares on the cash market. |
+
+### Stage 4: the rest of the world through Yahoo's screener
+
+The 21 stage 4 exchanges all use Yahoo Finance's stock screener (the
+`yahoo_screen` source), updated by the "Update rest of world" workflow four
+times a day plus Sundays for Saudi Arabia (which trades Sunday to Thursday;
+each exchange's weekend is set in `config/exchanges.json`).
+
+- **Symbols are Yahoo's** (e.g. `7203.T` Toyota, `SHEL.L` Shell). Euronext and
+  Nasdaq Nordic span several cities, filterable on their pages.
+- **Each stock keeps its own currency**: London has stocks in pence, pounds,
+  dollars and euros; Oslo trades in kroner within Euronext. London prices show
+  in pence (p), Johannesburg in cents (c) and Tel Aviv in agorot (ag.), as those
+  exchanges quote them; values and market caps show in pounds, rand and shekels.
+- **Coverage is whatever Yahoo carries.** Most stocks on major exchanges are
+  there; some very small companies may be missing. Abu Dhabi (ADX) isn't
+  available in Yahoo's screener, so the UAE is Dubai only.
+- **The first run** with backfill 370 downloads a year of history for every
+  stage 4 stock, which can take several hours. The workflow's *exchanges* box
+  lets you split it into smaller runs (for example Asia first, then Europe).
 
 ### English company names
 
@@ -163,7 +187,7 @@ Actions tab.
 
 ```bash
 pip install -r requirements.txt
-python -m unittest discover tests               # 38 tests using sample exchange files
+python -m unittest discover tests               # 49 tests using sample exchange files
 python -m pipeline.run update --exchanges NSE BSE
 python -m pipeline.run build
 cd site && python -m http.server 8000           # open http://localhost:8000

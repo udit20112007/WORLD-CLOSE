@@ -59,7 +59,7 @@ def make_demo(days: int = 260) -> None:
                              round(float(last_close[i]), 2), int(vol[i]), round(float(vol[i] * close[i]), 2),
                              int(vol[i] / 40) + 1])
                 last_close[i] = close[i]
-            store.save_day(code, d, pd.DataFrame(rows, columns=STANDARD_COLUMNS))
+            store.save_day(code, d, pd.DataFrame(rows, columns=STANDARD_COLUMNS[:len(rows[0])]).reindex(columns=STANDARD_COLUMNS))
         store.write_status(code, last_attempt=f"{trading[-1]}T14:00:00Z", last_success=f"{trading[-1]}T14:00:00Z",
                            new_days=1, errors=[], last_trading_day=trading[-1].isoformat(),
                            days_stored=len(trading))
@@ -99,7 +99,7 @@ def make_demo_us(days: int = 260, counts=None) -> None:
                              float(last[i]), vol, round(float(close[i]) * vol, 0), None, s["sector"],
                              round(float(close[i]) * s["shares"], 0) if s["series"] in ("Common", "ADR") else None])
             last = close
-            store.save_day(code, d, pd.DataFrame(rows, columns=STANDARD_COLUMNS))
+            store.save_day(code, d, pd.DataFrame(rows, columns=STANDARD_COLUMNS[:len(rows[0])]).reindex(columns=STANDARD_COLUMNS))
         store.write_status(code, last_attempt=f"{trading[-1]}T23:00:00Z", last_success=f"{trading[-1]}T23:00:00Z",
                            new_days=1, errors=[], notes=[], last_trading_day=trading[-1].isoformat(),
                            days_stored=len(trading))

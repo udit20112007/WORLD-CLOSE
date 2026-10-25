@@ -30,6 +30,7 @@ STANDARD_COLUMNS = [
     "trades",      # number of trades (if the exchange reports it)
     "sector",      # industry sector (if the source reports it)
     "market_cap",  # market capitalisation in the exchange currency (if reported)
+    "currency",    # quote currency when it differs by stock (e.g. London: GBp, USD, EUR)
 ]
 NUMERIC = ["open", "high", "low", "close", "prev_close", "volume", "value", "trades", "market_cap"]
 

@@ -217,7 +217,11 @@ dialog::backdrop { background: rgba(10, 18, 32, 0.45); }
   const LOCALE = { INR: "en-IN" };
   const nf = (key, opts, cur) => (fmts[key + (cur || "")] ||= new Intl.NumberFormat(LOCALE[cur], opts));
   const digits = (v) => (Math.abs(v) >= 1000 ? 0 : Math.abs(v) >= 1 ? 2 : 4);
+  // Some markets quote prices in a currency's sub-unit: London in pence, Johannesburg in
+  // cents, Tel Aviv in agorot. Prices show in the sub-unit; large amounts in the main unit.
+  const SUBUNIT = { GBp: ["GBP", "p"], GBX: ["GBP", "p"], ZAc: ["ZAR", "c"], ZAC: ["ZAR", "c"], ILA: ["ILS", " ag."] };
   function money(v, cur) {
+    if (v != null && SUBUNIT[cur]) return fmtNumD(v) + SUBUNIT[cur][1];
     if (v == null) return "–";
     const d = digits(v);
     try { return nf("m" + d, { style: "currency", currency: cur, minimumFractionDigits: d, maximumFractionDigits: d }, cur).format(v); }
@@ -231,8 +235,10 @@ dialog::backdrop { background: rgba(10, 18, 32, 0.45); }
     return prefix + nf("i0", { maximumFractionDigits: 0 }, "INR").format(v);
   }
   const compact = (v, cur) => (v == null ? "–" : cur === "INR" ? indian(v) : nf("c", { notation: "compact", maximumFractionDigits: 1 }, cur).format(v));
-  const compactMoney = (v, cur) => {
+  const fmtNumD = (v) => nf("sd" + digits(v), { minimumFractionDigits: digits(v), maximumFractionDigits: digits(v) }).format(v);
+  const compactMoney = (v, cur, isCap) => {
     if (v == null) return "–";
+    if (SUBUNIT[cur]) { const [main] = SUBUNIT[cur]; return compactMoney(isCap ? v : v / 100, main); }
     if (cur === "INR") return indian(v, "₹");
     try { return nf("cm", { style: "currency", currency: cur, notation: "compact", maximumFractionDigits: 1 }, cur).format(v); }
     catch { return compact(v, cur); }
@@ -358,7 +364,7 @@ dialog::backdrop { background: rgba(10, 18, 32, 0.45); }
         <div class="movers">
           <div><h3>Biggest gains</h3><p class="hint">Among the most traded fifth of stocks</p><ol>${gains.map((r) => mover(r, pct(r.change_pct), "up")).join("") || "<li class='sub'>None today</li>"}</ol></div>
           <div><h3>Biggest falls</h3><p class="hint">Among the most traded fifth of stocks</p><ol>${falls.map((r) => mover(r, pct(r.change_pct), "down")).join("") || "<li class='sub'>None today</li>"}</ol></div>
-          <div><h3>Most traded</h3><p class="hint">By value of shares traded</p><ol>${byValue.slice(0, 6).map((r) => mover(r, compactMoney(r.value, cur), "")).join("")}</ol></div>
+          <div><h3>Most traded</h3><p class="hint">By value of shares traded</p><ol>${byValue.slice(0, 6).map((r) => mover(r, compactMoney(r.value, r.currency || cur), "")).join("")}</ol></div>
         </div>
       </section>
       <section aria-labelledby="all-h">
@@ -416,12 +422,12 @@ dialog::backdrop { background: rgba(10, 18, 32, 0.45); }
     $("#rows").innerHTML = slice.map((r) => `<tr>
       <td class="co"><button type="button" data-open="${esc(r.symbol)}"><span class="nm">${esc(r.name)}</span>${r.local_name ? ` <span class="local" lang="${esc(state.lang)}">${esc(r.local_name)}</span>` : ""}<br>
         <span class="sub">${esc(r.symbol)}${r.series ? ", " + esc(r.series) : ""}${r.days_ago > 0 ? `, last traded ${fmtDate(addDays(state.summary.as_of, -r.days_ago))}` : ""}</span></button></td>
-      <td class="num">${money(r.close, cur)}</td>
+      <td class="num">${money(r.close, r.currency || cur)}</td>
       <td class="num pct ${dir(r.change_pct)}">${pct(r.change_pct)}</td>
       <td class="num col-wide">${compact(r.volume, cur)}</td>
-      <td class="num col-wide">${compactMoney(r.value, cur)}</td>
-      ${state.hasCap ? `<td class="num col-wide">${r.market_cap ? compactMoney(r.market_cap, cur) : "–"}</td>` : ""}
-      <td class="col-wide"><div class="range" title="${money(r.low_52w, cur)} to ${money(r.high_52w, cur)}"><i style="left:${(rangePos(r) * 100).toFixed(1)}%"></i></div></td>
+      <td class="num col-wide">${compactMoney(r.value, r.currency || cur)}</td>
+      ${state.hasCap ? `<td class="num col-wide">${r.market_cap ? compactMoney(r.market_cap, r.currency || cur, true) : "–"}</td>` : ""}
+      <td class="col-wide"><div class="range" title="${money(r.low_52w, r.currency || cur)} to ${money(r.high_52w, r.currency || cur)}"><i style="left:${(rangePos(r) * 100).toFixed(1)}%"></i></div></td>
     </tr>`).join("") || `<tr><td colspan="${state.hasCap ? 7 : 6}" class="empty">No stocks match${state.q ? ` “${esc(state.q)}”` : " these filters"}. Try part of the company name, the symbol${state.rows.some((r) => r.isin) ? ", or the full ISIN" : ""}.</td></tr>`;
     $("#count").textContent = list.length === state.rows.length ? "" : `${int(list.length)} of ${int(state.rows.length)} stocks match`;
     $("#pageinfo").textContent = list.length ? `${int(state.page * PAGE + 1)}–${int(state.page * PAGE + slice.length)} of ${int(list.length)}` : "";
@@ -432,7 +438,7 @@ dialog::backdrop { background: rgba(10, 18, 32, 0.45); }
   // ---------- Stock dialog ----------
   async function openStock(symbol) {
     const r = state.rows.find((x) => x.symbol === symbol); if (!r) return;
-    const s = state.summary, cur = s.currency, ex = state.index.exchanges.find((e) => e.code === state.ex);
+    const s = state.summary, cur = r.currency || s.currency, ex = state.index.exchanges.find((e) => e.code === state.ex);
     state.stock = r;
     $("#d-name").textContent = r.name;
     const lastDay = addDays(s.as_of, -r.days_ago);
@@ -444,7 +450,7 @@ dialog::backdrop { background: rgba(10, 18, 32, 0.45); }
     $("#d-stats").innerHTML = stat("Previous close", money(r.prev_close, cur)) + stat("52-week high", money(r.high_52w, cur)) +
       stat("52-week low", money(r.low_52w, cur)) + stat("Volume", r.volume == null ? "–" : int(r.volume)) +
       stat("Value traded", compactMoney(r.value, cur)) + (r.series ? stat(esc(state.index.exchanges.find((e) => e.code === state.ex).series_label || "Series"), esc(r.series)) : "") +
-      (r.sector ? stat("Sector", esc(r.sector)) : "") + (r.market_cap ? stat("Market cap", compactMoney(r.market_cap, cur)) : "") +
+      (r.sector ? stat("Sector", esc(r.sector)) : "") + (r.market_cap ? stat("Market cap", compactMoney(r.market_cap, cur, true)) : "") +
       (r.isin ? stat("ISIN", esc(r.isin)) : "") +
       (r.also?.length ? stat("Also listed on", r.also.map((c) => `<a href="#${esc(c.toLowerCase())}" data-also="${esc(c)}" data-isin="${esc(r.isin)}">${esc(c)}</a>`).join(", ")) : "");
     $("#d-chart").innerHTML = `<p class="sub">Loading chart…</p>`; $("#d-readout").textContent = "";
@@ -463,7 +469,7 @@ dialog::backdrop { background: rgba(10, 18, 32, 0.45); }
   }
 
   function drawChart() {
-    const r = state.stock, cur = state.summary.currency;
+    const r = state.stock, cur = r.currency || state.summary.currency;
     document.querySelectorAll("#d-periods button").forEach((b) => b.setAttribute("aria-pressed", String(Number(b.dataset.days) === state.period)));
     let pts = state.points || [];
     if (state.period && pts.length) { const cut = pts.at(-1).t - state.period * 864e5; pts = pts.filter((p) => p.t >= cut); }

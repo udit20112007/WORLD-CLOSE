@@ -24,7 +24,7 @@ HISTORY_DAYS = 370
 
 SUMMARY_FIELDS = ["symbol", "name", "isin", "series", "close", "prev_close", "change_pct",
                   "high_52w", "low_52w", "volume", "value", "days_ago", "bucket", "also",
-                  "sector", "market_cap", "local_name"]
+                  "sector", "market_cap", "local_name", "currency"]
 
 
 def _num(v, digits=2):
@@ -52,6 +52,7 @@ def _latest_rows(code: str):
     last["change_pct"] = (last["close"] / prev - 1) * 100
     last["days_ago"] = (pd.Timestamp(latest) - last["date"]).dt.days
     last["sector"] = last["sector"].fillna("").astype(str)
+    last["currency"] = last["currency"].fillna("").astype(str)
     last["isin"] = last["isin"].fillna("").astype(str)
     last["series"] = last["series"].fillna("").astype(str)
     last = last.sort_values("symbol").reset_index(drop=True)
@@ -107,7 +108,8 @@ def build() -> None:
                          _num(r.change_pct, 3), _num(r.high_52w), _num(r.low_52w),
                          None if pd.isna(r.volume) else int(r.volume), _num(r.value, 0),
                          int(r.days_ago), int(r.bucket), also,
-                         r.sector or None, _num(r.market_cap, 0), local])
+                         r.sector or None, _num(r.market_cap, 0), local,
+                         (r.currency if r.currency and r.currency != c["currency"] else None)])
         today_rows = last[last["days_ago"] == 0]
         breadth = {
             "up": int((today_rows["change_pct"] > 0).sum()),

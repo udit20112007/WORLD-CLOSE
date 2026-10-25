@@ -42,7 +42,7 @@ def stored_days(exchange: str) -> list[dt.date]:
     return sorted(days)
 
 
-TEXT_COLUMNS = ("symbol", "name", "isin", "series", "sector")
+TEXT_COLUMNS = ("symbol", "name", "isin", "series", "sector", "currency")
 
 
 def _read(path: Path) -> pd.DataFrame:

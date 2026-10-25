@@ -47,9 +47,16 @@ REPEAT_THRESHOLD = 0.9   # share of identical closes+volumes that means "same se
 SETTLE_MINUTES = 30      # wait this long after the close before trusting latest-only data
 
 
-def previous_weekday(day: dt.date) -> dt.date:
+def weekend(cfg: dict) -> set[int]:
+    """Weekdays with no trading (Monday=0). Most markets: Saturday and Sunday;
+    Saudi Arabia: Friday and Saturday."""
+    return set(cfg.get("weekend", [5, 6]))
+
+
+def previous_weekday(day: dt.date, cfg: dict | None = None) -> dt.date:
+    off = weekend(cfg or {})
     day -= dt.timedelta(days=1)
-    while day.weekday() >= 5:
+    while day.weekday() in off:
         day -= dt.timedelta(days=1)
     return day
 
@@ -57,12 +64,12 @@ def previous_weekday(day: dt.date) -> dt.date:
 def session_day(cfg: dict, now: dt.datetime) -> dt.date | None:
     """The trading day a latest-only source is showing right now, or None while the market is open."""
     day = now.date()
-    if day.weekday() >= 5:                       # weekend: Friday's session
-        return day - dt.timedelta(days=day.weekday() - 4)
+    if day.weekday() in weekend(cfg):            # weekend: the last trading day's session
+        return previous_weekday(day, cfg)
     if cfg.get("open_time"):                     # before the open: still the previous session's close
         oh, om = map(int, cfg["open_time"].split(":"))
         if now.time() < dt.time(oh, om):
-            return previous_weekday(day)
+            return previous_weekday(day, cfg)
     hh, mm = map(int, cfg.get("close_time", "16:00").split(":"))
     settled = (dt.datetime.combine(day, dt.time(hh, mm)) + dt.timedelta(minutes=SETTLE_MINUTES)).time()
     if now.time() < settled:

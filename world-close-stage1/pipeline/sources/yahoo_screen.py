@@ -5,8 +5,11 @@ with English names, last price, previous close, open/high/low, volume, market
 cap and the time of the last trade (which tells us the session date). Used for
 KOSPI and KOSDAQ, and for English company names on other exchanges.
 
-config:  yahoo_exchange  Yahoo's exchange code, e.g. KSC (KOSPI), KOE (KOSDAQ)
-         yahoo_suffix    suffix of Yahoo symbols there, e.g. .KS or .KQ
+config:  yahoo_exchange  Yahoo's exchange code, e.g. KSC (KOSPI), or a list of codes
+         yahoo_suffix    suffix of Yahoo symbols there, e.g. .KS, removed from our symbols
+         keep_suffix     keep Yahoo's full symbol (e.g. 7203.T), needed when one exchange
+                         spans several Yahoo codes whose tickers could collide
+         venues          {Yahoo exchange code: label}, shown as the series (e.g. city)
 """
 from __future__ import annotations
 
@@ -24,11 +27,13 @@ PAGE = 250
 MAX_PAGES = 60          # 15,000 stocks: far more than any exchange we use
 
 
-def screen_all(yahoo_exchange: str, quote_type: str = "EQUITY", pause: float = 1.0) -> list[dict]:
-    """Every quote Yahoo's screener returns for one exchange, page by page."""
+def screen_all(yahoo_exchange, quote_type: str = "EQUITY", pause: float = 1.0) -> list[dict]:
+    """Every quote Yahoo's screener returns for one exchange code (or a list of
+    codes, e.g. Euronext's seven venues), page by page."""
     import yfinance as yf
     query_cls = yf.EquityQuery if quote_type == "EQUITY" else yf.ETFQuery
-    query = query_cls("eq", ["exchange", yahoo_exchange])
+    codes = [yahoo_exchange] if isinstance(yahoo_exchange, str) else list(yahoo_exchange)
+    query = query_cls("eq", ["exchange", codes[0]]) if len(codes) == 1 else query_cls("is-in", ["exchange", *codes])
     quotes, offset, total = [], 0, None
     for _ in range(MAX_PAGES):
         result = yf.screen(query, offset=offset, size=PAGE, sortField="ticker", sortAsc=True)
@@ -51,7 +56,11 @@ def parse(quotes: list[dict], cfg: dict) -> pd.DataFrame:
     if not quotes:
         raise ValueError(f"Yahoo screener returned no stocks for {cfg.get('yahoo_exchange')}")
     raw = pd.DataFrame(quotes)
-    raw["_symbol"] = raw["symbol"].astype(str).map(strip_suffix)
+    keep = cfg.get("keep_suffix", False)
+    raw["_symbol"] = raw["symbol"].astype(str) if keep else raw["symbol"].astype(str).map(strip_suffix)
+    raw["_currency"] = raw["currency"].astype(str) if "currency" in raw else ""
+    venues = cfg.get("venues") or {}
+    raw["_series"] = raw["exchange"].map(venues).fillna("Stock") if venues and "exchange" in raw else "Stock"
     raw["_name"] = raw.get("longName", pd.Series(index=raw.index, dtype=object)).fillna(
         raw.get("shortName", pd.Series(index=raw.index, dtype=object))).fillna(raw["symbol"])
     df = normalize(raw.astype(str), {
@@ -59,12 +68,13 @@ def parse(quotes: list[dict], cfg: dict) -> pd.DataFrame:
         "open": ["regularMarketOpen"], "high": ["regularMarketDayHigh"], "low": ["regularMarketDayLow"],
         "close": ["regularMarketPrice"], "prev_close": ["regularMarketPreviousClose"],
         "volume": ["regularMarketVolume"], "market_cap": ["marketCap"],
+        "currency": ["_currency"], "series": ["_series"],
     })
+    df["currency"] = df["currency"].replace({"nan": "", "None": ""})
     # The screener reports volume 0 for some markets (e.g. Korea): treat it as unknown, not zero
     df["volume"] = df["volume"].where(df["volume"] > 0)
     df["value"] = (df["close"] * df["volume"]).round(0)
     df["market_cap"] = df["market_cap"].where(df["market_cap"] > 0)
-    df["series"] = "Stock"
     df = dedupe(df)
     if "regularMarketTime" in raw:
         tz = ZoneInfo(cfg.get("timezone", "UTC"))
@@ -100,8 +110,7 @@ def fill_from_history(df: pd.DataFrame, day: dt.date, cfg: dict) -> pd.DataFrame
     """Fill volume (and missing open/high/low) for `day` from Yahoo's daily history.
     Returns the filled rows, or None if Yahoo's history doesn't have that day yet."""
     from ..yahoo import backfill as yahoo_backfill
-    suffix = cfg.get("yahoo_suffix", "")
-    days, ok, errors = yahoo_backfill(df, day - dt.timedelta(days=7), day, lambda s: f"{s}{suffix}", pause=1.0)
+    days, ok, errors = yahoo_backfill(df, day - dt.timedelta(days=7), day, to_yahoo_for(cfg), pause=1.0)
     hist = days.get(day)
     if hist is None or hist.empty:
         print(f"  Yahoo history has no {day} yet; volume left blank", file=sys.stderr)
@@ -132,7 +141,14 @@ def repair(code: str, cfg: dict, store, days_back: int = 3) -> list[str]:
     return notes
 
 
+def to_yahoo_for(cfg: dict | None):
+    cfg = cfg or {}
+    if cfg.get("keep_suffix"):
+        return lambda s: s
+    suffix = cfg.get("yahoo_suffix", "")
+    return lambda s: f"{s}{suffix}"
+
+
 def backfill(latest: pd.DataFrame, start: dt.date, end: dt.date, cfg: dict | None = None):
     from ..yahoo import backfill as yahoo_backfill
-    suffix = (cfg or {}).get("yahoo_suffix", "")
-    return yahoo_backfill(latest, start, end, lambda s: f"{s}{suffix}")
+    return yahoo_backfill(latest, start, end, to_yahoo_for(cfg))

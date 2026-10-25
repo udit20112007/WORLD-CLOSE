@@ -69,6 +69,7 @@ def backfill(latest: pd.DataFrame, start: dt.date, end: dt.date, to_yahoo: Calla
                     "low": row.get("Low"), "close": row["Close"], "prev_close": prev.get(ts), "volume": vol,
                     "value": row["Close"] * vol if vol is not None else None, "trades": None,
                     "sector": meta.at[sym, "sector"], "market_cap": None,
+                    "currency": meta.at[sym, "currency"] if "currency" in meta else "",
                 })
         print(f"  Yahoo: {min(i + chunk_size, len(ysyms))}/{len(ysyms)} requested, {ok} with data", file=sys.stderr)
         time.sleep(pause)
