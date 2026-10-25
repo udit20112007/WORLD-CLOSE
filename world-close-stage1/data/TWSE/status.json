@@ -1,11 +1,12 @@
 {
-  "last_attempt": "2026-10-25T20:07:06Z",
+  "last_attempt": "2026-10-25T20:27:31Z",
   "new_days": 0,
   "errors": [],
   "notes": [
     "The source reports prices for 2026-10-22.",
     "2026-10-22 already saved.",
-    "Backfill: 1356 of 1368 stocks returned history, 245 days written."
+    "Backfill skipped: 246 days already stored.",
+    "English names: 255 of 1368 stocks."
   ],
   "last_success": "2026-10-25T19:23:15Z",
   "last_trading_day": "2026-10-22",
