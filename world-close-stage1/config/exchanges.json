@@ -50,7 +50,8 @@
     "source": "nasdaq_screener",
     "close_time": "16:00",
     "enabled": true,
-    "series_label": "Type"
+    "series_label": "Type",
+    "open_time": "04:00"
   },
   "NASDAQ": {
     "name": "Nasdaq",
@@ -64,7 +65,8 @@
     "source": "nasdaq_screener",
     "close_time": "16:00",
     "enabled": true,
-    "series_label": "Type"
+    "series_label": "Type",
+    "open_time": "04:00"
   },
   "NYSEAM": {
     "name": "NYSE American",
@@ -78,6 +80,107 @@
     "source": "nasdaq_screener",
     "close_time": "16:00",
     "enabled": true,
-    "series_label": "Type"
+    "series_label": "Type",
+    "open_time": "04:00"
+  },
+  "SSE": {
+    "name": "Shanghai Stock Exchange",
+    "short": "SSE",
+    "country": "China",
+    "city": "Shanghai",
+    "currency": "CNY",
+    "timezone": "Asia/Shanghai",
+    "source": "eastmoney",
+    "board": "sh_a",
+    "close_time": "15:00",
+    "series_label": "Board",
+    "region": "Asia-Pacific",
+    "enabled": true,
+    "open_time": "09:15"
+  },
+  "SZSE": {
+    "name": "Shenzhen Stock Exchange",
+    "short": "SZSE",
+    "country": "China",
+    "city": "Shenzhen",
+    "currency": "CNY",
+    "timezone": "Asia/Shanghai",
+    "source": "eastmoney",
+    "board": "sz_a",
+    "close_time": "15:00",
+    "series_label": "Board",
+    "region": "Asia-Pacific",
+    "enabled": true,
+    "open_time": "09:15"
+  },
+  "HKEX": {
+    "name": "Hong Kong Stock Exchange",
+    "short": "HKEX",
+    "country": "Hong Kong",
+    "city": "Hong Kong",
+    "currency": "HKD",
+    "timezone": "Asia/Hong_Kong",
+    "source": "eastmoney",
+    "board": "hk",
+    "close_time": "16:10",
+    "series_label": "Board",
+    "region": "Asia-Pacific",
+    "enabled": true,
+    "open_time": "09:00"
+  },
+  "TWSE": {
+    "name": "Taiwan Stock Exchange",
+    "short": "TWSE",
+    "country": "Taiwan",
+    "city": "Taipei",
+    "currency": "TWD",
+    "timezone": "Asia/Taipei",
+    "source": "twse",
+    "close_time": "13:30",
+    "series_label": "Type",
+    "region": "Asia-Pacific",
+    "enabled": true,
+    "open_time": "08:30"
+  },
+  "KOSPI": {
+    "name": "Korea Exchange: KOSPI",
+    "short": "KOSPI",
+    "country": "South Korea",
+    "city": "Seoul",
+    "currency": "KRW",
+    "timezone": "Asia/Seoul",
+    "source": "krx",
+    "endpoint": "stk_bydd_trd",
+    "close_time": "15:30",
+    "series_label": "Section",
+    "region": "Asia-Pacific",
+    "enabled": true
+  },
+  "KOSDAQ": {
+    "name": "Korea Exchange: KOSDAQ",
+    "short": "KOSDAQ",
+    "country": "South Korea",
+    "city": "Seoul",
+    "currency": "KRW",
+    "timezone": "Asia/Seoul",
+    "source": "krx",
+    "endpoint": "ksq_bydd_trd",
+    "close_time": "15:30",
+    "series_label": "Section",
+    "region": "Asia-Pacific",
+    "enabled": true
+  },
+  "B3": {
+    "name": "B3 (Brasil Bolsa Balcão)",
+    "short": "B3",
+    "country": "Brazil",
+    "city": "São Paulo",
+    "region": "Americas",
+    "currency": "BRL",
+    "timezone": "America/Sao_Paulo",
+    "source": "b3",
+    "close_time": "17:00",
+    "series_label": "Share class",
+    "enabled": true
   }
 }

@@ -192,6 +192,8 @@ class USTests(unittest.TestCase):
         self.assertIsNone(self.run.session_day(cfg, at(2026, 10, 23, 16, 10)))      # just closed
         self.assertEqual(self.run.session_day(cfg, at(2026, 10, 23, 19, 0)), dt.date(2026, 10, 23))
         self.assertEqual(self.run.session_day(cfg, at(2026, 10, 25, 9, 0)), dt.date(2026, 10, 23))  # Sunday
+        self.assertEqual(self.run.session_day(cfg, at(2026, 10, 23, 3, 0)), dt.date(2026, 10, 22))  # before open
+        self.assertEqual(self.run.session_day(cfg, at(2026, 10, 26, 2, 0)), dt.date(2026, 10, 23))  # Monday pre-open
 
     def _run_latest(self, when, payload=None):
         from pipeline.sources import nasdaq
@@ -245,7 +247,7 @@ class USTests(unittest.TestCase):
         fake_yf = mock.Mock(download=fake_download)
         cfg = self.cfg["NASDAQ"]
         with mock.patch.dict(sys.modules, {"yfinance": fake_yf}), \
-             mock.patch.object(nasdaq.time, "sleep", lambda s: None), \
+             mock.patch("pipeline.yahoo.time.sleep", lambda s: None), \
              mock.patch.object(self.run, "local_now", lambda tz: dt.datetime(2026, 10, 23, 19, 0, tzinfo=ny_tz())):
             self.run.update_latest_only("NASDAQ", cfg, nasdaq, 7)
         stored = self.store.stored_days("NASDAQ")
@@ -278,3 +280,178 @@ def pd_isna(v):
 def ny_tz():
     from zoneinfo import ZoneInfo
     return ZoneInfo("America/New_York")
+
+
+class Stage3Tests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        os.environ["WC_DATA_DIR"] = str(self.tmp / "data")
+        os.environ.pop("KRX_OPENAPI_KEY", None)
+        import pipeline.store, pipeline.build_site, pipeline.run
+        importlib.reload(pipeline.store)
+        importlib.reload(pipeline.build_site)
+        importlib.reload(pipeline.run)
+        pipeline.build_site.SITE_DATA = self.tmp / "site_data"
+        self.store, self.build_site, self.run = pipeline.store, pipeline.build_site, pipeline.run
+        self.cfg = self.run.load_config()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp)
+        os.environ.pop("WC_DATA_DIR", None)
+        os.environ.pop("KRX_OPENAPI_KEY", None)
+
+    # ---- China / Hong Kong (East Money via AKShare)
+    def _em_frame(self, hk=False):
+        import pandas as pd
+        rows = [
+            {"代码": "600519", "名称": "贵州茅台", "最新价": 1450.0, "涨跌额": 12.0, "今开": 1440.0, "最高": 1455.0,
+             "最低": 1436.0, "昨收": 1438.0, "成交量": 31000, "成交额": 4.5e9, "总市值": 1.82e12},
+            {"代码": "688981", "名称": "中芯国际", "最新价": 95.5, "涨跌额": -1.2, "今开": 96.0, "最高": 97.0,
+             "最低": 94.8, "昨收": 96.7, "成交量": 520000, "成交额": 5.0e9, "总市值": 7.6e11},
+            {"代码": "600000", "名称": "停牌股", "最新价": float("nan"), "涨跌额": float("nan"), "今开": float("nan"),
+             "最高": float("nan"), "最低": float("nan"), "昨收": 9.8, "成交量": 0, "成交额": 0, "总市值": 2.9e11},
+        ]
+        if hk:
+            rows = [{"代码": "00700", "名称": "腾讯控股", "最新价": 620.0, "涨跌额": 5.0, "今开": 615.0, "最高": 625.0,
+                     "最低": 612.0, "昨收": 615.0, "成交量": 15000000, "成交额": 9.3e9},
+                    {"代码": "08001", "名称": "GEM股", "最新价": 0.25, "涨跌额": 0.0, "今开": 0.25, "最高": 0.26,
+                     "最低": 0.24, "昨收": 0.25, "成交量": 100000, "成交额": 25000}]
+        return pd.DataFrame(rows)
+
+    def test_eastmoney_china(self):
+        from pipeline.sources import eastmoney
+        df = eastmoney.parse(self._em_frame(), self.cfg["SSE"]).set_index("symbol")
+        self.assertNotIn("600000", df.index)                          # suspended: no price
+        self.assertEqual(df.at["600519", "volume"], 3_100_000)        # lots of 100 -> shares
+        self.assertEqual(df.at["600519", "prev_close"], 1438.0)
+        self.assertEqual(df.at["600519", "series"], "Main Board")
+        self.assertEqual(df.at["688981", "series"], "STAR Market")
+        self.assertEqual(df.at["600519", "market_cap"], 1.82e12)
+        self.assertEqual(eastmoney.to_yahoo_for("sh_a")("600519"), "600519.SS")
+        self.assertEqual(eastmoney.to_yahoo_for("sz_a")("000001"), "000001.SZ")
+
+    def test_eastmoney_hong_kong(self):
+        from pipeline.sources import eastmoney
+        df = eastmoney.parse(self._em_frame(hk=True), self.cfg["HKEX"]).set_index("symbol")
+        self.assertEqual(df.at["00700", "volume"], 15_000_000)        # HK volumes are already shares
+        self.assertEqual(df.at["08001", "series"], "GEM")
+        self.assertTrue(pd_isna(df.at["00700", "market_cap"]))
+        self.assertEqual(eastmoney.to_yahoo_for("hk")("00700"), "0700.HK")
+
+    # ---- Taiwan
+    def test_twse(self):
+        from pipeline.sources import twse
+        rows = json.loads((FIX / "twse_stock_day_all.json").read_text())
+        df = twse.parse(rows, self.cfg["TWSE"])
+        self.assertEqual(df.attrs["session_date"], dt.date(2026, 10, 23))   # ROC 115 = 2026
+        d = df.set_index("symbol")
+        self.assertNotIn("9999", d.index)
+        self.assertAlmostEqual(d.at["2330", "prev_close"], 1035.0)
+        self.assertAlmostEqual(d.at["2317", "prev_close"], 215.0)
+        self.assertEqual(d.at["0050", "series"], "ETF")
+        self.assertEqual(d.at["2330", "trades"], 51234)
+
+    def test_session_date_from_source_wins(self):
+        from pipeline.sources import twse
+        rows = json.loads((FIX / "twse_stock_day_all.json").read_text())
+        rows = rows * 20
+        for i, r in enumerate(rows):
+            r = rows[i] = dict(r, Code=f"{i:04d}")
+        cfg = self.cfg["TWSE"]
+        tw = ZoneInfoT("Asia/Taipei")
+        # Run on Monday evening, but the source still says Friday (e.g. Monday was a holiday)
+        with mock.patch.object(self.run, "local_now", lambda tz: dt.datetime(2026, 10, 26, 19, 0, tzinfo=tw)), \
+             mock.patch.object(twse, "fetch", lambda day, c: twse.parse(rows, c)):
+            self.run.update_exchange("TWSE", cfg, 0)
+        self.assertEqual(self.store.stored_days("TWSE"), [dt.date(2026, 10, 23)])
+
+    # ---- Korea
+    def test_krx_parse(self):
+        from pipeline.sources import krx
+        df = krx.parse(json.loads((FIX / "krx_stk_bydd_trd.json").read_text()), self.cfg["KOSPI"]).set_index("symbol")
+        self.assertEqual(df.at["005930", "close"], 98500)
+        self.assertEqual(df.at["005930", "prev_close"], 97000)
+        self.assertEqual(df.at["000660", "prev_close"], 314000)
+        self.assertEqual(df.at["005930", "volume"], 15_234_567)
+        self.assertEqual(df.at["005930", "market_cap"], 588_000_000_000_000)
+        self.assertEqual(df.at["005930", "series"], "Stock")
+
+    def test_krx_empty_day_and_bad_response(self):
+        from pipeline.common import NotPublished
+        from pipeline.sources import krx
+        with self.assertRaises(NotPublished):
+            krx.parse({"OutBlock_1": []}, self.cfg["KOSPI"])
+        with self.assertRaisesRegex(ValueError, "Unrecognised KRX response"):
+            krx.parse({"respMsg": "Unauthorized API Call"}, self.cfg["KOSPI"])
+
+    def test_krx_without_key_needs_setup(self):
+        ok = self.run.update_exchange("KOSPI", self.cfg["KOSPI"], 0)
+        self.assertFalse(ok)
+        errs = self.store.read_status("KOSPI")["errors"]
+        self.assertEqual(len(errs), 1)                                # stops at once, no retry storm
+        self.assertIn("KRX_OPENAPI_KEY", errs[0])
+
+    def test_krx_key_never_appears_in_errors(self):
+        from pipeline.sources import krx
+        os.environ["KRX_OPENAPI_KEY"] = "SECRETKEY123"
+        def boom(sess, url, **kw):
+            raise RuntimeError(f"Download failed after 3 tries: {url} (HTTP 500)")
+        with mock.patch.object(krx, "get_bytes", boom), mock.patch.object(krx, "_session", None), \
+             mock.patch.object(self.run.time, "sleep", lambda s: None):
+            self.run.update_exchange("KOSPI", self.cfg["KOSPI"], 0)
+        status = json.dumps(self.store.read_status("KOSPI"))
+        self.assertNotIn("SECRETKEY123", status)
+        self.assertIn("***", status)
+
+    # ---- Brazil
+    def test_b3_daily(self):
+        from pipeline.sources import b3
+        blob = (FIX / "b3_cotahist_daily.zip").read_bytes()
+        with mock.patch.object(b3, "_get", lambda url: blob):
+            df = b3.fetch(dt.date(2026, 10, 23), self.cfg["B3"]).set_index("symbol")
+        self.assertEqual(sorted(df.index), ["PETR4", "VALE3"])         # option and odd lot dropped
+        self.assertAlmostEqual(df.at["PETR4", "close"], 31.40)
+        self.assertAlmostEqual(df.at["PETR4", "open"], 30.51)
+        self.assertEqual(df.at["PETR4", "volume"], 37_774_500)
+        self.assertEqual(df.at["PETR4", "isin"], "BRPETRACNPR6")
+        self.assertEqual(df.at["PETR4", "series"], "PN")
+        self.assertEqual(df.at["PETR4", "name"], "PETROBRAS")
+
+    def test_b3_range_backfill_and_prev_close(self):
+        from pipeline.sources import b3
+        annual = (FIX / "b3_cotahist_annual.zip").read_bytes()
+        daily = (FIX / "b3_cotahist_daily.zip").read_bytes()
+        get = lambda url: annual if "_A" in url else daily
+        cfg = self.cfg["B3"]
+        with mock.patch.object(b3, "_get", get), mock.patch.object(self.run, "MIN_ROWS", 1), \
+             mock.patch.object(self.run.time, "sleep", lambda s: None), \
+             mock.patch.object(self.run, "local_now", lambda tz: dt.datetime(2026, 10, 23, 22, 0, tzinfo=ZoneInfoT(tz))):
+            self.run.update_exchange("B3", cfg, 5)
+        self.assertEqual(self.store.stored_days("B3"), [dt.date(2026, 10, d) for d in (21, 22, 23)])
+        d22 = self.store.load_day("B3", dt.date(2026, 10, 22)).set_index("symbol")
+        self.assertAlmostEqual(d22.at["PETR4", "prev_close"], 30.0)
+        self.assertIn("Backfill", " ".join(self.store.read_status("B3")["notes"]))
+
+    def test_daily_prev_close_filled_from_store(self):
+        from pipeline.sources import b3
+        daily = (FIX / "b3_cotahist_daily.zip").read_bytes()
+        import pandas as pd
+        prev = b3._standard(b3.parse_lines([]).reindex(columns=[])) if False else None
+        # A stored previous day with PETR4 at 30.6
+        with mock.patch.object(b3, "_get", lambda url: daily):
+            today = b3.fetch(dt.date(2026, 10, 23), self.cfg["B3"])
+        self.store.save_day("B3", dt.date(2026, 10, 22), today.assign(close=30.6))
+        filled = self.run.fill_prev_close("B3", dt.date(2026, 10, 23), today).set_index("symbol")
+        self.assertAlmostEqual(filled.at["PETR4", "prev_close"], 30.6)
+
+    def test_all_exchanges_build(self):
+        self.build_site.build()
+        index = json.loads((self.build_site.SITE_DATA / "exchanges.json").read_text())
+        codes = [e["code"] for e in index["exchanges"]]
+        for code in ["SSE", "SZSE", "HKEX", "TWSE", "KOSPI", "KOSDAQ", "B3"]:
+            self.assertIn(code, codes)
+
+
+def ZoneInfoT(name):
+    from zoneinfo import ZoneInfo
+    return ZoneInfo(name)

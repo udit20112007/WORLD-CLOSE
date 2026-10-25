@@ -47,6 +47,10 @@ class NotPublished(Exception):
     """No file for that date: a holiday, a weekend, or not published yet."""
 
 
+class NeedsSetup(Exception):
+    """The source can't run until the owner sets something up (such as an API key)."""
+
+
 def load_config() -> dict:
     with CONFIG_FILE.open(encoding="utf-8") as f:
         return json.load(f)

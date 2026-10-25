@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from .common import NotPublished, load_config
+from .common import NeedsSetup, NotPublished, load_config
 from .sources import SOURCES
 from . import store
 
@@ -47,11 +47,22 @@ REPEAT_THRESHOLD = 0.9   # share of identical closes+volumes that means "same se
 SETTLE_MINUTES = 30      # wait this long after the close before trusting latest-only data
 
 
+def previous_weekday(day: dt.date) -> dt.date:
+    day -= dt.timedelta(days=1)
+    while day.weekday() >= 5:
+        day -= dt.timedelta(days=1)
+    return day
+
+
 def session_day(cfg: dict, now: dt.datetime) -> dt.date | None:
     """The trading day a latest-only source is showing right now, or None while the market is open."""
     day = now.date()
     if day.weekday() >= 5:                       # weekend: Friday's session
         return day - dt.timedelta(days=day.weekday() - 4)
+    if cfg.get("open_time"):                     # before the open: still the previous session's close
+        oh, om = map(int, cfg["open_time"].split(":"))
+        if now.time() < dt.time(oh, om):
+            return previous_weekday(day)
     hh, mm = map(int, cfg.get("close_time", "16:00").split(":"))
     settled = (dt.datetime.combine(day, dt.time(hh, mm)) + dt.timedelta(minutes=SETTLE_MINUTES)).time()
     if now.time() < settled:
@@ -73,6 +84,19 @@ def local_now(tz: str) -> dt.datetime:
     return dt.datetime.now(ZoneInfo(tz))
 
 
+def fill_prev_close(code: str, day: dt.date, df: "pd.DataFrame") -> "pd.DataFrame":
+    """For sources that don't report a previous close, use our last stored close before `day`."""
+    if df["prev_close"].notna().any():
+        return df
+    earlier = [d for d in store.stored_days(code) if d < day]
+    if not earlier:
+        return df
+    prev = store.load_day(code, earlier[-1]).set_index("symbol")["close"]
+    df = df.copy()
+    df["prev_close"] = df["symbol"].map(prev)
+    return df
+
+
 def update_latest_only(code: str, cfg: dict, source, backfill_days: int) -> bool:
     now = local_now(cfg["timezone"])
     day = session_day(cfg, now)
@@ -80,7 +104,7 @@ def update_latest_only(code: str, cfg: dict, source, backfill_days: int) -> bool
     saved, errors, notes = [], [], []
 
     if day is None:
-        notes.append("Market still open; nothing saved.")
+        notes.append("Today’s session isn’t finished yet (or hasn’t started); nothing saved.")
     elif day in have:
         notes.append(f"{day} already saved.")
     else:
@@ -88,8 +112,14 @@ def update_latest_only(code: str, cfg: dict, source, backfill_days: int) -> bool
             df = source.fetch(day, cfg)
             if len(df) < MIN_ROWS:
                 raise ValueError(f"only {len(df)} rows, expected thousands")
+            reported = df.attrs.get("session_date")   # sources that say which day the prices are for
+            if reported and reported != day:
+                notes.append(f"The source reports prices for {reported}.")
+                day = reported
             prev = store.load_day(code, have[-1]) if have else None
-            if prev is not None and is_repeat(df, prev):
+            if day in have:
+                notes.append(f"{day} already saved.")
+            elif prev is not None and is_repeat(df, prev):
                 notes.append(f"Prices are identical to {have[-1]}: market holiday, nothing saved.")
             else:
                 store.save_day(code, day, df)
@@ -97,6 +127,8 @@ def update_latest_only(code: str, cfg: dict, source, backfill_days: int) -> bool
                 print(f"[{code}] {day}: saved {len(df)} stocks")
         except NotPublished as exc:
             notes.append(str(exc))
+        except NeedsSetup as exc:
+            errors.append(f"Needs setup: {exc}")
         except Exception as exc:
             errors.append(f"{day}: {exc}")
             print(f"[{code}] {day}: ERROR {exc}", file=sys.stderr)
@@ -107,7 +139,7 @@ def update_latest_only(code: str, cfg: dict, source, backfill_days: int) -> bool
             latest = store.load_day(code, have[-1])
             start = have[-1] - dt.timedelta(days=backfill_days)
             print(f"[{code}] backfilling {start} to {have[-1]} from Yahoo for {len(latest)} stocks…")
-            days, ok, bf_errors = source.backfill(latest, start, have[-1] - dt.timedelta(days=1))
+            days, ok, bf_errors = source.backfill(latest, start, have[-1] - dt.timedelta(days=1), cfg)
             errors.extend(bf_errors[-3:])
             for d, rows in sorted(days.items()):
                 existing = store.load_day(code, d)
@@ -136,11 +168,29 @@ def update_exchange(code: str, cfg: dict, backfill_days: int) -> bool:
     source = SOURCES[cfg["source"]]
     if getattr(source, "LATEST_ONLY", False):
         return update_latest_only(code, cfg, source, backfill_days)
-    today = dt.datetime.now(ZoneInfo(cfg["timezone"])).date()
-    days = candidate_days(set(store.stored_days(code)), today, backfill_days)
+    today = local_now(cfg["timezone"]).date()
+    have = set(store.stored_days(code))
+    days = candidate_days(have, today, backfill_days)
     print(f"[{code}] checking {len(days)} day(s): {days[0] if days else '-'} to {days[-1] if days else '-'}")
 
-    saved, errors, streak = [], [], 0
+    saved, errors, notes, streak = [], [], [], 0
+
+    # Sources that can download a whole range at once (e.g. B3's annual file) backfill that way
+    if backfill_days and hasattr(source, "fetch_range") and days:
+        try:
+            ranged = source.fetch_range(days[0], days[-1], cfg)
+            for day in sorted(d for d in ranged if d in set(days) and len(ranged[d]) >= MIN_ROWS):
+                store.save_day(code, day, fill_prev_close(code, day, ranged[day]))
+                saved.append(day)
+            notes.append(f"Backfill: {len(saved)} days from the full-range download.")
+            print(f"[{code}] {notes[-1]}")
+            days = [d for d in days if d not in set(saved)][-5:]   # still try the latest few one by one
+        except NeedsSetup as exc:
+            errors.append(f"Needs setup: {exc}")
+            days = []
+        except Exception as exc:
+            errors.append(f"Range download failed ({exc}); trying day by day.")
+
     for day in days:
         try:
             df = source.fetch(day, cfg)
@@ -149,6 +199,9 @@ def update_exchange(code: str, cfg: dict, backfill_days: int) -> bool:
         except NotPublished:
             streak = 0
             continue
+        except NeedsSetup as exc:
+            errors.append(f"Needs setup: {exc}")
+            break
         except Exception as exc:
             errors.append(f"{day}: {exc}")
             print(f"[{code}] {day}: ERROR {exc}", file=sys.stderr)
@@ -158,13 +211,13 @@ def update_exchange(code: str, cfg: dict, backfill_days: int) -> bool:
                 break
             continue
         streak = 0
-        store.save_day(code, day, df)
+        store.save_day(code, day, fill_prev_close(code, day, df))
         saved.append(day)
         print(f"[{code}] {day}: saved {len(df)} stocks")
         time.sleep(1.0 if backfill_days else 0.3)
 
     have = store.stored_days(code)
-    fields = {"last_attempt": now_utc(), "new_days": len(saved), "errors": errors[-6:]}
+    fields = {"last_attempt": now_utc(), "new_days": len(saved), "errors": errors[-6:], "notes": notes[-4:]}
     if saved:
         fields["last_success"] = now_utc()
     if have:

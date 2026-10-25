@@ -3,8 +3,9 @@
 The closing price of every listed stock, exchange by exchange, updated
 automatically after each trading day and hosted free on GitHub Pages.
 
-**Covered so far:** every stock on **NSE and BSE** (stage 1) and on **NYSE,
-Nasdaq and NYSE American** (stage 2). More exchanges plug in as separate
+**Covered so far:** every stock on **NSE and BSE** (stage 1), **NYSE, Nasdaq
+and NYSE American** (stage 2), and **Shanghai, Shenzhen, Hong Kong, Taiwan,
+KOSPI, KOSDAQ and B3 Brazil** (stage 3). More exchanges plug in as separate
 sources (see the roadmap below).
 
 What the site shows for each exchange:
@@ -61,6 +62,30 @@ Sources:
 | NSE | Daily cash-market bhavcopy (UDiFF format), `nsearchives.nseindia.com` | Series EQ, BE, BZ and SME series SM, ST, SZ. Bonds, G-secs and other instruments are excluded. |
 | BSE | Daily equity bhavcopy (UDiFF format), `bseindia.com` | All equity groups (A, B, T, X, Z, M, ...). Debt groups are excluded. |
 | NYSE, Nasdaq, NYSE American | Nasdaq's public stock screener, `api.nasdaq.com` | Every listed stock with last price, change, volume, sector and market cap. Types: Common, ADR, Preferred, Warrant, Unit, Right. |
+
+| Shanghai, Shenzhen, Hong Kong | East Money quote lists, via the AKShare library | Latest session only; Yahoo backfill for history. Mainland boards: Main Board, STAR Market, ChiNext. Names are in Chinese. |
+| Taiwan | Official TWSE OpenAPI (`STOCK_DAY_ALL`) | Latest session, with its trading date; Yahoo backfill for history. Stocks and ETFs. |
+| KOSPI, KOSDAQ | Official KRX OpenAPI | Any date, so history is native. **Needs a free API key** (see below). Names are in Korean. |
+| B3 (Brazil) | B3's official COTAHIST files | Any date; the backfill uses the annual file (one download per year). Standard-lot shares on the cash market. |
+
+### Setting up the Korea key (KOSPI, KOSDAQ)
+
+The Korea Exchange now requires a free API key. Until it's set, the two
+Korean exchanges show "Needs setup" on the status page and everything else
+keeps working.
+
+1. Go to https://openapi.krx.co.kr, sign up, and request an API key
+   (My page → API key application). Approval usually takes about a day and
+   arrives by email.
+2. Still on that site, apply to use the two APIs **유가증권 일별매매정보**
+   (KOSPI daily trading, `stk_bydd_trd`) and **코스닥 일별매매정보** (KOSDAQ daily
+   trading, `ksq_bydd_trd`).
+3. In your GitHub repository: **Settings → Secrets and variables → Actions →
+   New repository secret**. Name it `KRX_OPENAPI_KEY` and paste the key.
+4. Run the "Update Asia and Brazil" workflow again with backfill days 370.
+
+GitHub secrets are never shown in logs, and the pipeline also removes the key
+from any error message before saving it to the public status page.
 
 ### How the US source differs
 
@@ -124,7 +149,7 @@ Actions tab.
 
 ```bash
 pip install -r requirements.txt
-python -m unittest discover tests               # 13 tests using sample exchange files
+python -m unittest discover tests               # 25 tests using sample exchange files
 python -m pipeline.run update --exchanges NSE BSE
 python -m pipeline.run build
 cd site && python -m http.server 8000           # open http://localhost:8000
@@ -157,6 +182,5 @@ The site picks up new exchanges automatically.
 
 ## Roadmap
 
-- **Stage 3:** Shanghai, Shenzhen, Korea, Taiwan, Hong Kong, Brazil.
 - **Stage 4:** the remaining exchanges through Yahoo Finance, with the
   largest stocks updated daily and the rest on a rotation.
