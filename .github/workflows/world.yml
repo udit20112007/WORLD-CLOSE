@@ -48,27 +48,16 @@ jobs:
       - name: Run tests
         run: python -m unittest discover tests
 
-      - name: Download new trading days
+      - name: Download and save each exchange
         id: update
         continue-on-error: true
         env:
           BACKFILL_DAYS: ${{ github.event.inputs.backfill_days || '0' }}
           EXCHANGES: ${{ github.event.inputs.exchanges || 'TSE ASX SGX BURSA SET IDX LSE EURONEXT XETRA SIX NORDIC BME GPW BIST TADAWUL DFM TASE JSE TSX CSE BMV' }}
-        run: python -m pipeline.run update --exchanges $EXCHANGES --backfill-days "$BACKFILL_DAYS"
-
-      - name: Save new data to the repository
-        run: |
-          mkdir -p data
-          git config user.name "github-actions[bot]"
-          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
-          git add data
-          if git diff --cached --quiet; then
-            echo "No new data to save."
-          else
-            git commit -m "Data: rest of world $(date -u +%Y-%m-%d)"
-            git pull --rebase --autostash
-            git push
-          fi
+          # Stop starting new exchanges after this many minutes, leaving time to publish the site
+          WC_TIME_BUDGET_MIN: "300"
+        # Saves each exchange to the repository as soon as it's done
+        run: bash scripts/update_and_save.sh "$BACKFILL_DAYS" $EXCHANGES
 
       - name: Build the site
         run: python -m pipeline.run build
