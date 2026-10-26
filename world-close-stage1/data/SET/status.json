@@ -1,10 +1,12 @@
 {
-  "last_attempt": "2026-10-26T08:40:58Z",
+  "last_attempt": "2026-10-26T09:09:24Z",
   "new_days": 0,
-  "errors": [
-    "Backfill skipped: couldn't get the list of stocks (Yahoo screener failed: HTTP Error 401: )."
-  ],
+  "errors": [],
   "notes": [
-    "Today’s session isn’t finished yet (or hasn’t started); nothing saved."
-  ]
+    "Today’s session isn’t finished yet (or hasn’t started); nothing saved.",
+    "Took the list of 2303 stocks from the source for the backfill.",
+    "Backfill: 2233 of 2303 stocks returned history, 244 days written."
+  ],
+  "last_trading_day": "2026-10-22",
+  "days_stored": 244
 }
