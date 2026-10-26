@@ -1,8 +1,8 @@
 {
-  "last_attempt": "2026-10-26T05:40:14Z",
+  "last_attempt": "2026-10-26T08:40:54Z",
   "new_days": 0,
   "errors": [
-    "Backfill skipped: no current day saved yet to take the stock list from."
+    "Backfill skipped: couldn't get the list of stocks (Yahoo screener failed: HTTP Error 401: )."
   ],
   "notes": [
     "Today’s session isn’t finished yet (or hasn’t started); nothing saved."
