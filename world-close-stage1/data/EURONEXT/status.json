@@ -1,0 +1,16 @@
+{
+  "last_attempt": "2026-10-26T09:58:11Z",
+  "new_days": 0,
+  "errors": [
+    "Yahoo chunk 96: no data returned",
+    "Yahoo chunk 97: no data returned",
+    "Yahoo chunk 98: no data returned"
+  ],
+  "notes": [
+    "Today’s session isn’t finished yet (or hasn’t started); nothing saved.",
+    "Took the list of 9907 stocks from the source for the backfill.",
+    "Backfill: 963 of 9907 stocks returned history, 259 days written."
+  ],
+  "last_trading_day": "2026-10-23",
+  "days_stored": 259
+}
