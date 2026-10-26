@@ -70,6 +70,28 @@ def _screen_with_retries(yf, query, offset: int) -> dict:
             time.sleep(wait)
 
 
+DEAD_AFTER_DAYS = 30
+
+
+def drop_dead_listings(raw: pd.DataFrame) -> pd.DataFrame:
+    """Yahoo's screener still lists many delisted, merged or long-suspended securities
+    (e.g. thousands on Euronext). Keep only stocks that traded in the last 30 days,
+    measured from the newest trade time in the response."""
+    if "regularMarketTime" not in raw:
+        return raw
+    t = pd.to_numeric(raw["regularMarketTime"], errors="coerce")
+    if t.notna().mean() < 0.5:          # the field isn't reliable here; keep everything
+        return raw
+    keep = t >= t.max() - DEAD_AFTER_DAYS * 86400
+    dropped = int((~keep).sum())
+    if dropped:
+        print(f"  Dropped {dropped} of {len(raw)} listings with no trade in {DEAD_AFTER_DAYS} days",
+              file=sys.stderr)
+    out = raw[keep].reset_index(drop=True)
+    out.attrs["dead_dropped"] = dropped
+    return out
+
+
 def strip_suffix(symbol: str) -> str:
     return symbol.rsplit(".", 1)[0] if "." in symbol else symbol
 
@@ -78,6 +100,7 @@ def parse(quotes: list[dict], cfg: dict) -> pd.DataFrame:
     if not quotes:
         raise ValueError(f"Yahoo screener returned no stocks for {cfg.get('yahoo_exchange')}")
     raw = pd.DataFrame(quotes)
+    raw = drop_dead_listings(raw)
     keep = cfg.get("keep_suffix", False)
     raw["_symbol"] = raw["symbol"].astype(str) if keep else raw["symbol"].astype(str).map(strip_suffix)
     raw["_currency"] = raw["currency"].astype(str) if "currency" in raw else ""
@@ -98,6 +121,8 @@ def parse(quotes: list[dict], cfg: dict) -> pd.DataFrame:
     df["value"] = (df["close"] * df["volume"]).round(0)
     df["market_cap"] = df["market_cap"].where(df["market_cap"] > 0)
     df = dedupe(df)
+    if raw.attrs.get("dead_dropped"):
+        df.attrs["dead_dropped"] = raw.attrs["dead_dropped"]
     if "regularMarketTime" in raw:
         tz = ZoneInfo(cfg.get("timezone", "UTC"))
         times = pd.to_numeric(raw["regularMarketTime"], errors="coerce").dropna()

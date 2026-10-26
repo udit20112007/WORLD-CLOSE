@@ -128,6 +128,8 @@ def update_latest_only(code: str, cfg: dict, source, backfill_days: int) -> bool
                 raise ValueError(f"only {len(df)} rows, expected thousands")
             if df.attrs.get("provider"):
                 notes.append(f"Prices from {df.attrs['provider']}.")
+            if df.attrs.get("dead_dropped"):
+                notes.append(f"Left out {df.attrs['dead_dropped']} listings with no trade in the last 30 days.")
             reported = df.attrs.get("session_date")   # sources that say which day the prices are for
             if reported and reported != day:
                 notes.append(f"The source reports prices for {reported}.")

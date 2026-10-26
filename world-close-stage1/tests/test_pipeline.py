@@ -986,3 +986,29 @@ class YahooRetryTests(unittest.TestCase):
     def test_other_errors_are_not_retried(self):
         with self.assertRaisesRegex(Exception, "Invalid"):
             self._run(failures=1, error="Invalid EQ value")
+
+
+class DeadListingTests(unittest.TestCase):
+    def test_listings_without_recent_trades_are_dropped(self):
+        from pipeline.run import load_config
+        from pipeline.sources import yahoo_screen
+        now = int(dt.datetime(2026, 10, 26, 16, 40, tzinfo=dt.timezone.utc).timestamp())
+        live = [{"symbol": f"L{i}.PA", "longName": f"Live {i}", "exchange": "PAR", "regularMarketPrice": 10.0,
+                 "regularMarketPreviousClose": 10.0, "regularMarketVolume": 100, "regularMarketTime": now - i * 60}
+                for i in range(60)]
+        quiet = [{"symbol": "Q.PA", "longName": "Quiet but alive", "exchange": "PAR", "regularMarketPrice": 2.0,
+                  "regularMarketVolume": 5, "regularMarketTime": now - 20 * 86400}]           # 20 days ago: kept
+        dead = [{"symbol": f"D{i}.MI", "longName": f"Delisted {i}", "exchange": "MIL", "regularMarketPrice": 1.0,
+                 "regularMarketTime": now - (400 + i) * 86400} for i in range(500)]          # over a year: dropped
+        df = yahoo_screen.parse(live + quiet + dead, load_config()["EURONEXT"])
+        self.assertEqual(len(df), 61)
+        self.assertIn("Q.PA", set(df.symbol))
+        self.assertEqual(df.attrs["dead_dropped"], 500)
+        self.assertEqual(df.attrs["session_date"], dt.date(2026, 10, 26))
+
+    def test_penny_prices_keep_four_decimals(self):
+        from pipeline.build_site import _num
+        self.assertEqual(_num(0.347999989), 0.348)
+        self.assertEqual(_num(1.6799999475), 1.68)
+        self.assertEqual(_num(12345.678), 12345.68)
+        self.assertEqual(_num(-0.5, 3), -0.5)

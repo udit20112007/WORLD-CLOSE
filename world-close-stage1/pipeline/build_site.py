@@ -30,7 +30,10 @@ SUMMARY_FIELDS = ["symbol", "name", "isin", "series", "close", "prev_close", "ch
 def _num(v, digits=2):
     if v is None or (isinstance(v, float) and (math.isnan(v) or math.isinf(v))):
         return None
-    return round(float(v), digits)
+    v = float(v)
+    if digits == 2 and abs(v) < 1:       # prices under 1 (penny stocks) keep 4 decimals
+        return round(v, 4)
+    return round(v, digits)
 
 
 def _latest_rows(code: str):
