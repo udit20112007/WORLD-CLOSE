@@ -1,0 +1,10 @@
+{
+  "last_attempt": "2026-10-26T05:40:14Z",
+  "new_days": 0,
+  "errors": [
+    "Backfill skipped: no current day saved yet to take the stock list from."
+  ],
+  "notes": [
+    "Today’s session isn’t finished yet (or hasn’t started); nothing saved."
+  ]
+}

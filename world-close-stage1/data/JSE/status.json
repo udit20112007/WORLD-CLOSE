@@ -1,0 +1,11 @@
+{
+  "last_attempt": "2026-10-26T05:44:35Z",
+  "new_days": 1,
+  "errors": [],
+  "notes": [
+    "Backfill: 409 of 506 stocks returned history, 253 days written."
+  ],
+  "last_success": "2026-10-26T05:44:35Z",
+  "last_trading_day": "2026-10-23",
+  "days_stored": 254
+}
