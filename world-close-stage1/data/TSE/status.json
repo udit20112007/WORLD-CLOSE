@@ -1,10 +1,11 @@
 {
-  "last_attempt": "2026-10-26T05:40:14Z",
-  "new_days": 0,
-  "errors": [
-    "Backfill skipped: no current day saved yet to take the stock list from."
-  ],
+  "last_attempt": "2026-10-26T08:37:23Z",
+  "new_days": 1,
+  "errors": [],
   "notes": [
-    "Today’s session isn’t finished yet (or hasn’t started); nothing saved."
-  ]
+    "Backfill: 3766 of 3815 stocks returned history, 246 days written."
+  ],
+  "last_success": "2026-10-26T08:37:23Z",
+  "last_trading_day": "2026-10-26",
+  "days_stored": 247
 }
