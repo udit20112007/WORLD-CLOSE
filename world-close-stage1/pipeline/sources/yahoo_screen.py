@@ -36,7 +36,7 @@ def screen_all(yahoo_exchange, quote_type: str = "EQUITY", pause: float = 1.0) -
     query = query_cls("eq", ["exchange", codes[0]]) if len(codes) == 1 else query_cls("is-in", ["exchange", *codes])
     quotes, offset, total = [], 0, None
     for _ in range(MAX_PAGES):
-        result = yf.screen(query, offset=offset, size=PAGE, sortField="ticker", sortAsc=True)
+        result = _screen_with_retries(yf, query, offset)
         page = result.get("quotes") or []
         quotes += page
         total = result.get("total", total)
@@ -46,6 +46,28 @@ def screen_all(yahoo_exchange, quote_type: str = "EQUITY", pause: float = 1.0) -
             break
         time.sleep(pause)
     return quotes
+
+
+RETRY_WAITS = (60, 180, 300)   # seconds to wait after each refusal before trying again
+
+
+def _is_rate_limited(exc: Exception) -> bool:
+    """Yahoo rate-limits its login-token ("crumb") request after heavy use; yfinance then
+    carries on without a token and the screener answers 401 Unauthorized, or 429."""
+    text = f"{type(exc).__name__} {exc}".lower()
+    return any(k in text for k in ("401", "429", "unauthorized", "too many requests", "ratelimit"))
+
+
+def _screen_with_retries(yf, query, offset: int) -> dict:
+    for attempt, wait in enumerate((*RETRY_WAITS, None)):
+        try:
+            return yf.screen(query, offset=offset, size=PAGE, sortField="ticker", sortAsc=True)
+        except Exception as exc:
+            if wait is None or not _is_rate_limited(exc):
+                raise
+            print(f"  Yahoo refused the request ({exc}); waiting {wait}s before retry {attempt + 1}",
+                  file=sys.stderr)
+            time.sleep(wait)
 
 
 def strip_suffix(symbol: str) -> str:

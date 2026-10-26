@@ -16,7 +16,11 @@ tried=0; failed=0; skipped=()
 git config user.name "github-actions[bot]"
 git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
 
+first=1
 for ex in "$@"; do
+  # During backfills, pause between exchanges so Yahoo's rate limit can recover
+  if [ "$backfill" != "0" ] && [ "$first" = 0 ]; then sleep "${WC_PAUSE_SECONDS:-30}"; fi
+  first=0
   elapsed_min=$(( ($(date +%s) - start) / 60 ))
   if [ "$elapsed_min" -ge "$budget_min" ]; then
     skipped+=("$ex"); continue

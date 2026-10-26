@@ -958,3 +958,31 @@ class MarketOpenBackfillTests(unittest.TestCase):
              mock.patch.object(self.run, "local_now", lambda tz: dt.datetime(2026, 10, 26, 14, 0, tzinfo=ZoneInfoT(tz))):
             self.run.update_exchange("TSE", self.cfg, 370)
         self.assertIn("couldn't get the list of stocks", " ".join(self.store.read_status("TSE")["errors"]))
+
+
+class YahooRetryTests(unittest.TestCase):
+    def _run(self, failures, error="HTTP Error 401: "):
+        from pipeline.sources import yahoo_screen
+        calls, waits = [], []
+        def screen(query, offset=0, size=250, **kw):
+            calls.append(offset)
+            if len(calls) <= failures:
+                raise Exception(error)
+            return {"quotes": [{"symbol": "A.T"}], "total": 1}
+        fake = mock.Mock(screen=screen, EquityQuery=lambda *a: a)
+        with mock.patch.dict(sys.modules, {"yfinance": fake}), \
+             mock.patch.object(yahoo_screen.time, "sleep", lambda s: waits.append(s)):
+            return yahoo_screen.screen_all("JPX"), calls, waits
+
+    def test_waits_out_a_rate_limit(self):
+        quotes, calls, waits = self._run(failures=2)
+        self.assertEqual(len(quotes), 1)
+        self.assertEqual(waits[:2], [60, 180])
+
+    def test_gives_up_after_three_retries(self):
+        with self.assertRaisesRegex(Exception, "401"):
+            self._run(failures=10)
+
+    def test_other_errors_are_not_retried(self):
+        with self.assertRaisesRegex(Exception, "Invalid"):
+            self._run(failures=1, error="Invalid EQ value")
