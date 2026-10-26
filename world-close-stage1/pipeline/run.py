@@ -300,6 +300,32 @@ def cmd_update(args) -> int:
     return 0 if any(results.values()) else 1
 
 
+def cmd_prune(args) -> int:
+    """Delete daily files older than --keep-days. Charts and 52-week ranges use the last
+    370 days, so the default of 400 keeps everything the site needs."""
+    cutoff = dt.date.today() - dt.timedelta(days=args.keep_days)
+    removed = 0
+    for code in load_config():
+        days = store.stored_days(code)
+        old = [d for d in days if d < cutoff]
+        for d in old:
+            store.day_file(code, d).unlink()
+            removed += 1
+        if old:
+            store.write_status(code, days_stored=len(days) - len(old))
+        for year_dir in (store.DATA_DIR / code).glob("[0-9][0-9][0-9][0-9]"):
+            if year_dir.is_dir() and not any(year_dir.iterdir()):
+                year_dir.rmdir()
+    print(f"Pruned {removed} daily file(s) older than {cutoff}.")
+    return 0
+
+
+def cmd_exchanges(args) -> int:
+    """Print the enabled exchange codes (used by the workflow for "all")."""
+    print(" ".join(code for code, c in load_config().items() if c.get("enabled")))
+    return 0
+
+
 def cmd_build(args) -> int:
     from .build_site import build
     build()
@@ -320,6 +346,11 @@ def main() -> int:
     u.add_argument("--backfill-days", type=int, default=0,
                    help="also fetch missing days this far back (use 370 on the first run)")
     u.set_defaults(func=cmd_update)
+    pr = sub.add_parser("prune", help="delete daily files older than --keep-days")
+    pr.add_argument("--keep-days", type=int, default=400)
+    pr.set_defaults(func=cmd_prune)
+    ls = sub.add_parser("exchanges", help="print the enabled exchange codes")
+    ls.set_defaults(func=cmd_exchanges)
     b = sub.add_parser("build", help="write site/data from stored days")
     b.set_defaults(func=cmd_build)
     d = sub.add_parser("demo", help="write random demo snapshots (set WC_DATA_DIR to keep them out of data/)")

@@ -1012,3 +1012,32 @@ class DeadListingTests(unittest.TestCase):
         self.assertEqual(_num(1.6799999475), 1.68)
         self.assertEqual(_num(12345.678), 12345.68)
         self.assertEqual(_num(-0.5, 3), -0.5)
+
+
+class PruneTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        os.environ["WC_DATA_DIR"] = str(self.tmp / "data")
+        import pipeline.store, pipeline.run
+        for m in (pipeline.store, pipeline.run):
+            importlib.reload(m)
+        self.store, self.run = pipeline.store, pipeline.run
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp)
+        os.environ.pop("WC_DATA_DIR", None)
+
+    def test_prune_keeps_recent_days_only(self):
+        import pandas as pd
+        from pipeline.common import STANDARD_COLUMNS
+        df = pd.DataFrame([{"symbol": "A", "close": 1.0}]).reindex(columns=STANDARD_COLUMNS)
+        today = dt.date.today()
+        days = [today - dt.timedelta(days=n) for n in (1, 100, 399, 401, 700)]
+        for d in days:
+            self.store.save_day("NSE", d, df)
+        self.store.write_status("NSE", days_stored=5, last_trading_day=days[0].isoformat())
+        args = mock.Mock(keep_days=400)
+        self.run.cmd_prune(args)
+        self.assertEqual(self.store.stored_days("NSE"), sorted(days[:3]))
+        self.assertEqual(self.store.read_status("NSE")["days_stored"], 3)
+        self.assertTrue(self.store.read_status("NSE")["last_trading_day"])        # rest of status kept

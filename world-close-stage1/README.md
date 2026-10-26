@@ -35,31 +35,55 @@ What the site shows for each exchange:
 4. **Settings → Actions → General → Workflow permissions:** choose
    **Read and write permissions** and save. The workflow needs this to save
    each day's prices into the repository.
-5. **Actions tab → Update India (NSE, BSE) → Run workflow.** In the
-   *backfill days* box enter **370** to download the past year, so charts and
-   52-week ranges work from day one. This first run takes about 20–40 minutes.
+5. **Actions tab → Update World Close → Run workflow.** In the *backfill
+   days* box enter **370** to download the past year, so charts and 52-week
+   ranges work from day one. For a first run of all 33 exchanges, split it
+   into groups in the *exchanges* box (for example `NSE BSE NYSE NASDAQ`),
+   one run at a time, since a full backfill can take several hours.
 6. Your site is at `https://<your-username>.github.io/<repo-name>/`.
 
-From then on it runs by itself at 19:00 IST every weekday, with a second try
-at 22:00 IST in case the exchange published late.
+From then on it runs by itself about ten times a day, after each region's
+markets close.
 
 ## How it works
 
+One GitHub workflow (`.github/workflows/update.yml`) runs about ten times a
+day, timed after each region's markets close. Every run checks every exchange;
+each one only downloads when it has a finished session it hasn't saved yet, so
+the extra runs are cheap. The workflow just calls `scripts/ci_run.sh`, which
+holds all the logic, so changes never need workflow edits.
+
 ```
-GitHub Actions (weekdays 19:00 and 22:00 IST)
- ├─ python -m pipeline.run update --exchanges NSE BSE
- │    downloads each new day's official bhavcopy file and saves it as
- │    data/NSE/2026/2026-10-23.csv.gz   (one small file per exchange per day)
- ├─ commits the new files to the repository, so history builds up
- ├─ python -m pipeline.run build
- │    turns stored days into what the site loads:
- │    site/data/exchanges.json          exchange list, counts, status
- │    site/data/NSE/summary.json        every stock's latest close (~150 KB compressed)
- │    site/data/NSE/hist/<n>.json       1-year closes, 150 stocks per file, loaded on click
- └─ publishes site/ to GitHub Pages
+scripts/ci_run.sh
+ ├─ checks out the "data" branch (the price data; see Storage below)
+ ├─ for each exchange: python -m pipeline.run update --exchanges <CODE>
+ │    then saves the data branch straight away
+ ├─ python -m pipeline.run prune --keep-days 400
+ └─ python -m pipeline.run build   → site/, published to GitHub Pages
 ```
 
-Sources:
+### Storage
+
+Price data lives on a separate branch called **`data`**, not on `main`. Git
+normally keeps every version of every file forever, which would make the
+repository grow by roughly half a gigabyte a year. Instead, the data branch is
+always **a single commit** holding the current files (each save replaces it),
+and daily files older than 400 days are deleted, which is still enough for
+one-year charts and 52-week ranges. So storage stays roughly constant. The
+`main` branch only holds code.
+
+The first run of `ci_run.sh` creates the data branch from `main`'s
+`world-close-stage1/data` folder (reusing the stored files, so nothing is
+uploaded twice) and removes that folder from `main`. Older versions of the data
+remain in `main`'s history from before the move, but nothing is added there any
+more.
+
+To look at the data on GitHub, switch the branch selector from `main` to
+`data`. To work with it locally: `git fetch origin data` and
+`git worktree add ../wc-data origin/data`, then set
+`WC_DATA_DIR=../wc-data/data` when running the pipeline.
+
+### Sources
 
 | Exchange | File | Notes |
 |---|---|---|
@@ -196,7 +220,7 @@ Actions tab.
 
 ```bash
 pip install -r requirements.txt
-python -m unittest discover tests               # 56 tests using sample exchange files
+python -m unittest discover tests               # 57 tests using sample exchange files
 python -m pipeline.run update --exchanges NSE BSE
 python -m pipeline.run build
 cd site && python -m http.server 8000           # open http://localhost:8000
