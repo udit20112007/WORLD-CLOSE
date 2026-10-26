@@ -52,7 +52,7 @@ else
   if [ -d "$root/$rel/data" ] && git -C "$root" ls-files --error-unmatch "$rel/data" >/dev/null 2>&1; then
     git -C "$root" rm -r -q "$rel/data"
     git -C "$root" commit -q -m "Move price data to the data branch"
-    git -C "$root" pull -q --rebase origin "$(git rev-parse --abbrev-ref HEAD)" && git -C "$root" push -q origin HEAD
+    git -C "$root" pull -q --rebase --autostash origin "$(git rev-parse --abbrev-ref HEAD)" && git -C "$root" push -q origin HEAD
     echo "Moved $rel/data from main to the data branch."
   fi
 fi
@@ -97,6 +97,25 @@ for ex in "$@"; do
 done
 
 $PY -m pipeline.run prune --keep-days "$keep_days" && save "pruned files older than $keep_days days"
+
+# ---------------------------------------------------------------- keep-alive
+# GitHub pauses scheduled workflows in public repositories after 60 days without
+# activity. Data saves go to the data branch, so once a month (if main has had no
+# other commit) record the date in keepalive.txt on main.
+keep_days_alive="${WC_KEEPALIVE_DAYS:-30}"
+last_main=$(git -C "$root" log -1 --format=%ct HEAD)
+if [ $(( ($(date +%s) - last_main) / 86400 )) -ge "$keep_days_alive" ]; then
+  branch="$(git -C "$root" rev-parse --abbrev-ref HEAD)"
+  printf '%s\n%s\n' "Last automatic keep-alive: $(date -u '+%Y-%m-%d %H:%M UTC')" \
+    "GitHub pauses scheduled workflows after 60 days without commits; scripts/ci_run.sh updates this file monthly." \
+    > "$project/keepalive.txt"
+  git -C "$root" add "$rel/keepalive.txt"
+  git -C "$root" commit -q -m "Keep-alive (GitHub pauses schedules after 60 days without commits)"
+  for attempt in 1 2 3; do
+    git -C "$root" pull -q --rebase --autostash origin "$branch" && git -C "$root" push -q origin HEAD && { echo "Keep-alive commit made on $branch."; break; }
+    sleep 5
+  done
+fi
 
 # ---------------------------------------------------------------- site
 $PY -m pipeline.run build || { echo "::error::Site build failed"; exit 1; }

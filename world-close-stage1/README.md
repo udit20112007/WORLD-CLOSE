@@ -78,6 +78,11 @@ uploaded twice) and removes that folder from `main`. Older versions of the data
 remain in `main`'s history from before the move, but nothing is added there any
 more.
 
+**Keep-alive:** GitHub pauses scheduled workflows in public repositories after
+60 days without activity. Since data saves go to the `data` branch, the script
+makes a small commit to `main` (updating `keepalive.txt` with the date)
+whenever `main` has had no commit for 30 days, so the schedules never pause.
+
 To look at the data on GitHub, switch the branch selector from `main` to
 `data`. To work with it locally: `git fetch origin data` and
 `git worktree add ../wc-data origin/data`, then set
