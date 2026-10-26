@@ -1,5 +1,5 @@
 {
-  "last_attempt": "2026-10-26T08:41:00Z",
+  "last_attempt": "2026-10-26T09:09:28Z",
   "new_days": 0,
   "errors": [
     "Backfill skipped: couldn't get the list of stocks (Yahoo screener failed: HTTP Error 401: )."
