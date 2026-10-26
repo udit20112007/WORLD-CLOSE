@@ -1,0 +1,196 @@
+{
+ "period": [
+  "2025-10-20",
+  "2026-10-26"
+ ],
+ "days": 250,
+ "filters": [
+  {
+   "step": "All companies matched by ISIN on both exchanges",
+   "companies": 2848,
+   "stock_days": 595598
+  },
+  {
+   "step": "NSE regular equity series (EQ) only",
+   "companies": 2751,
+   "stock_days": 550726
+  },
+  {
+   "step": "Share price of at least Rs 20",
+   "companies": 2524,
+   "stock_days": 501497
+  },
+  {
+   "step": "Traded on both exchanges that day",
+   "companies": 2524,
+   "stock_days": 501497
+  }
+ ],
+ "desc": {
+  "mean": 29.0,
+  "median": 11.0,
+  "p75": 27.9,
+  "p90": 65.4,
+  "p95": 111.2,
+  "p99": 293.8
+ },
+ "share_over": {
+  "10": 52.8,
+  "25": 27.6,
+  "50": 13.7,
+  "100": 5.8,
+  "200": 2.0
+ },
+ "share_zero": 3.3,
+ "signed_median": 0.0,
+ "share_bse_higher": 49.2,
+ "stocks_in_regression": 2212,
+ "xs": {
+  "n": 2212,
+  "r2": 0.882,
+  "coef": {
+   "Intercept": {
+    "b": 3.4423,
+    "se": 0.035,
+    "t": 98.2
+   },
+   "log_value": {
+    "b": -0.3413,
+    "se": 0.0037,
+    "t": -91.1
+   },
+   "bse_share_pct": {
+    "b": -0.0031,
+    "se": 0.001,
+    "t": -3.3
+   },
+   "inv_price": {
+    "b": -0.0156,
+    "se": 0.004,
+    "t": -3.9
+   },
+   "vol_pct": {
+    "b": 0.103,
+    "se": 0.0047,
+    "t": 22.0
+   }
+  }
+ },
+ "xs_liq_only_r2": 0.841,
+ "by_liq": {
+  "Q1 (least)": {
+   "median_gap": 50.2,
+   "median_value_cr": 0.1,
+   "n": 443
+  },
+  "Q2": {
+   "median_gap": 20.6,
+   "median_value_cr": 0.84,
+   "n": 442
+  },
+  "Q3": {
+   "median_gap": 11.5,
+   "median_value_cr": 3.86,
+   "n": 442
+  },
+  "Q4": {
+   "median_gap": 7.5,
+   "median_value_cr": 13.94,
+   "n": 442
+  },
+  "Q5 (most)": {
+   "median_gap": 4.5,
+   "median_value_cr": 84.11,
+   "n": 443
+  }
+ },
+ "ar1": {
+  "beta": 0.139,
+  "se": 0.016,
+  "n": 497948,
+  "half_life_days": 0.35
+ },
+ "ar1_by_liq": {
+  "Q1 (least)": 0.137,
+  "Q2": 0.048,
+  "Q3": 0.026,
+  "Q4": 0.019,
+  "Q5 (most)": 0.012
+ },
+ "after_big": {
+  "n": 64160,
+  "smaller_next_day": 78.0,
+  "sign_flip": 48.0,
+  "median_shrink": 58.0
+ },
+ "daily": {
+  "n": 250,
+  "b": 0.8,
+  "t": 5.1,
+  "r2": 0.122,
+  "median_daily_gap": 11.0,
+  "corr": 0.35
+ },
+ "calm_vs_stress": {
+  "calm": 10.4,
+  "stress": 12.6
+ },
+ "share_liquid_over_25": 6.6,
+ "share_liquid_over_50": 1.9,
+ "share_liquid_over_100": 0.5,
+ "robust": {
+  "first half": {
+   "from": "2025-10-20",
+   "to": "2026-04-29",
+   "median_gap": 10.7,
+   "liq_slope": -0.36,
+   "liq_r2": 0.843,
+   "ar1": 0.139
+  },
+  "second half": {
+   "from": "2026-04-30",
+   "to": "2026-10-26",
+   "median_gap": 11.3,
+   "liq_slope": -0.325,
+   "liq_r2": 0.794,
+   "ar1": 0.139
+  },
+  "mean_gap_liq_slope": -0.315,
+  "mean_gap_r2": 0.785,
+  "ar1_winsorised": 0.07
+ },
+ "signed_by_liq": {
+  "Q1 (least)": {
+   "mean": 16.3,
+   "median": 6.5,
+   "bse_higher_pct": 54.2
+  },
+  "Q2": {
+   "mean": 1.9,
+   "median": 1.0,
+   "bse_higher_pct": 50.5
+  },
+  "Q3": {
+   "mean": 0.7,
+   "median": 0.4,
+   "bse_higher_pct": 50.1
+  },
+  "Q4": {
+   "mean": 0.2,
+   "median": 0.0,
+   "bse_higher_pct": 48.3
+  },
+  "Q5 (most)": {
+   "mean": -0.8,
+   "median": -0.3,
+   "bse_higher_pct": 44.0
+  }
+ },
+ "q1_positive_share": 75,
+ "q1_median_of_medians": 6.1,
+ "bse_share_median_pct": 5.5,
+ "value_total_share_bse_pct": 7.0,
+ "price_median": 268,
+ "vol_median_pct": 2.59,
+ "xs_liq_only_slope": -0.347
+}
