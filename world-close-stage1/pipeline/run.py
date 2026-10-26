@@ -153,11 +153,25 @@ def update_latest_only(code: str, cfg: dict, source, backfill_days: int) -> bool
         have = store.stored_days(code)
         if have and has_history(have, backfill_days):
             notes.append(f"Backfill skipped: {len(have)} days already stored.")
-        elif have:
-            latest = store.load_day(code, have[-1])
-            start = have[-1] - dt.timedelta(days=backfill_days)
-            print(f"[{code}] backfilling {start} to {have[-1]} from Yahoo for {len(latest)} stocks…")
-            days, ok, bf_errors = source.backfill(latest, start, have[-1] - dt.timedelta(days=1), cfg)
+        else:
+            if have:
+                latest, end = store.load_day(code, have[-1]), have[-1] - dt.timedelta(days=1)
+            else:
+                # Nothing saved yet, e.g. because the market is open right now. The backfill
+                # only needs the list of stocks, so take it from the source and fill history
+                # up to the previous trading day; today's unfinished session isn't saved.
+                try:
+                    latest = source.fetch(now.date(), {**cfg, "_listing_only": True})
+                except Exception as exc:
+                    latest = None
+                    errors.append(f"Backfill skipped: couldn't get the list of stocks ({str(exc)[:160]}).")
+                end = previous_weekday(now.date(), cfg) if day is None else day - dt.timedelta(days=1)
+                if latest is not None:
+                    notes.append(f"Took the list of {len(latest)} stocks from the source for the backfill.")
+        if not (have and has_history(have, backfill_days)) and latest is not None:
+            start = end - dt.timedelta(days=backfill_days)
+            print(f"[{code}] backfilling {start} to {end} from Yahoo for {len(latest)} stocks…")
+            days, ok, bf_errors = source.backfill(latest, start, end, cfg)
             errors.extend(bf_errors[-3:])
             for d, rows in sorted(days.items()):
                 existing = store.load_day(code, d)
@@ -166,8 +180,6 @@ def update_latest_only(code: str, cfg: dict, source, backfill_days: int) -> bool
                 store.save_day(code, d, rows)
             notes.append(f"Backfill: {ok} of {len(latest)} stocks returned history, {len(days)} days written.")
             print(f"[{code}] {notes[-1]}")
-        else:
-            errors.append("Backfill skipped: no current day saved yet to take the stock list from.")
 
     if hasattr(source, "repair"):
         try:

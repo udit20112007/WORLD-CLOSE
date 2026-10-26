@@ -91,7 +91,7 @@ def fetch(day: dt.date, cfg: dict) -> pd.DataFrame:
     except Exception as exc:
         raise RuntimeError(f"Yahoo screener failed: {exc}") from exc
     df = parse(quotes, cfg)
-    if missing_volume(df):
+    if missing_volume(df) and not cfg.get("_listing_only"):   # the stock list alone needs no volumes
         session = df.attrs.get("session_date", day)
         filled = fill_from_history(df, session, cfg)
         if filled is not None:

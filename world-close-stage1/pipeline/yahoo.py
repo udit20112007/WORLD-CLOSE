@@ -39,7 +39,7 @@ def backfill(latest: pd.DataFrame, start: dt.date, end: dt.date, to_yahoo: Calla
         try:
             frame = yf.download(chunk, start=start.isoformat(), end=(end + dt.timedelta(days=1)).isoformat(),
                                 interval="1d", auto_adjust=False, group_by="ticker", threads=True,
-                                progress=False)
+                                progress=False, timeout=30)
         except Exception as exc:
             errors.append(f"Yahoo chunk {n}: {exc}")
             time.sleep(pause * 5)

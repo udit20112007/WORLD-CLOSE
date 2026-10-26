@@ -901,3 +901,60 @@ class Stage4Tests(unittest.TestCase):
         path = self.store.day_file("LSE", dt.date(2026, 10, 23)); path.parent.mkdir(parents=True)
         pd.DataFrame([{"symbol": "SHEL.L", "name": "Shell", "close": 2650.0}]).to_csv(path, index=False, compression="gzip")
         self.assertEqual(self.store.load_day("LSE", dt.date(2026, 10, 23)).iloc[0]["currency"], "")
+
+
+class MarketOpenBackfillTests(unittest.TestCase):
+    """First run of an exchange while its market is open: backfill must still happen."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        os.environ["WC_DATA_DIR"] = str(self.tmp / "data")
+        import pipeline.store, pipeline.run
+        for m in (pipeline.store, pipeline.run):
+            importlib.reload(m)
+        self.store, self.run = pipeline.store, pipeline.run
+        self.cfg = self.run.load_config()["TSE"]
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp)
+        os.environ.pop("WC_DATA_DIR", None)
+
+    def _quotes(self):
+        t = int(dt.datetime(2026, 10, 26, 5, 0, tzinfo=dt.timezone.utc).timestamp())   # Monday, mid-session
+        return [{"symbol": f"{1300 + i}.T", "longName": f"Company {i}", "currency": "JPY", "regularMarketPrice": 1000.0 + i,
+                 "regularMarketPreviousClose": 1000.0, "regularMarketVolume": 0, "regularMarketTime": t} for i in range(60)]
+
+    def test_backfill_runs_while_market_is_open(self):
+        import pandas as pd
+        from pipeline.common import STANDARD_COLUMNS
+        from pipeline.sources import yahoo_screen
+        calls = {}
+        def fake_backfill(latest, start, end, cfg=None):
+            calls["end"], calls["n"] = end, len(latest)
+            days = {d.date(): latest.assign(close=900.0) for d in pd.bdate_range(start, end)}
+            return days, len(latest), []
+        tokyo = ZoneInfoT("Asia/Tokyo")
+        with mock.patch.object(yahoo_screen, "screen_all", lambda ex, qt="EQUITY": self._quotes()), \
+             mock.patch.object(yahoo_screen, "backfill", fake_backfill), \
+             mock.patch("pipeline.yahoo.backfill", side_effect=AssertionError("no volume fill for a listing")), \
+             mock.patch.object(self.run, "local_now", lambda tz: dt.datetime(2026, 10, 26, 14, 0, tzinfo=tokyo)):
+            ok = self.run.update_exchange("TSE", self.cfg, 370)
+        self.assertTrue(ok)
+        self.assertEqual(calls["end"], dt.date(2026, 10, 23))                    # history up to Friday
+        self.assertEqual(calls["n"], 60)
+        days = self.store.stored_days("TSE")
+        self.assertNotIn(dt.date(2026, 10, 26), days)                            # Monday's unfinished session not saved
+        self.assertEqual(days[-1], dt.date(2026, 10, 23))
+        self.assertGreater(len(days), 250)
+        status = self.store.read_status("TSE")
+        self.assertEqual(status["errors"], [])
+        self.assertIn("Took the list of 60 stocks", " ".join(status["notes"]))
+
+    def test_listing_failure_is_reported_not_crashed(self):
+        from pipeline.sources import yahoo_screen
+        def down(*a, **k):
+            raise ConnectionError("Yahoo down")
+        with mock.patch.object(yahoo_screen, "screen_all", down), \
+             mock.patch.object(self.run, "local_now", lambda tz: dt.datetime(2026, 10, 26, 14, 0, tzinfo=ZoneInfoT(tz))):
+            self.run.update_exchange("TSE", self.cfg, 370)
+        self.assertIn("couldn't get the list of stocks", " ".join(self.store.read_status("TSE")["errors"]))

@@ -215,7 +215,10 @@ dialog::backdrop { background: rgba(10, 18, 32, 0.45); }
   // ---------- Formatting ----------
   const fmts = {};
   const LOCALE = { INR: "en-IN" };
-  const nf = (key, opts, cur) => (fmts[key + (cur || "")] ||= new Intl.NumberFormat(LOCALE[cur], opts));
+  // Compact amounts (1.8B) use the short scale everywhere except rupees, which use lakh and crore.
+  // Without this, a browser set to Indian English would write every currency in crore.
+  const nf = (key, opts, cur) => (fmts[key + (cur || "")] ||= new Intl.NumberFormat(
+    LOCALE[cur] || (opts && opts.notation === "compact" ? "en-US" : undefined), opts));
   const digits = (v) => (Math.abs(v) >= 1000 ? 0 : Math.abs(v) >= 1 ? 2 : 4);
   // Some markets quote prices in a currency's sub-unit: London in pence, Johannesburg in
   // cents, Tel Aviv in agorot. Prices show in the sub-unit; large amounts in the main unit.

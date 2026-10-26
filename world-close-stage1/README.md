@@ -91,6 +91,12 @@ each exchange's weekend is set in `config/exchanges.json`).
 - **The first run** with backfill 370 downloads a year of history for every
   stage 4 stock, which can take several hours. The workflow's *exchanges* box
   lets you split it into smaller runs (for example Asia first, then Europe).
+  The workflow saves each exchange as soon as it's done
+  (`scripts/update_and_save.sh`), and stops starting new ones after 5 hours so
+  the site still gets published; any it didn't reach are listed as a warning.
+- **A market that's open during the first run** still gets its history: the
+  stock list is taken from the screener and history is filled up to the
+  previous trading day. Today's unfinished session is never saved.
 
 ### English company names
 
@@ -187,7 +193,7 @@ Actions tab.
 
 ```bash
 pip install -r requirements.txt
-python -m unittest discover tests               # 49 tests using sample exchange files
+python -m unittest discover tests               # 51 tests using sample exchange files
 python -m pipeline.run update --exchanges NSE BSE
 python -m pipeline.run build
 cd site && python -m http.server 8000           # open http://localhost:8000
