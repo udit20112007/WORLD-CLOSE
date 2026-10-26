@@ -1,0 +1,12 @@
+{
+  "last_attempt": "2026-10-26T10:15:53Z",
+  "new_days": 0,
+  "errors": [],
+  "notes": [
+    "Today’s session isn’t finished yet (or hasn’t started); nothing saved.",
+    "Took the list of 1787 stocks from the source for the backfill.",
+    "Backfill: 1566 of 1787 stocks returned history, 257 days written."
+  ],
+  "last_trading_day": "2026-10-23",
+  "days_stored": 257
+}
