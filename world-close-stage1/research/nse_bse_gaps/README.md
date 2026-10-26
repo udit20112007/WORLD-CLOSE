@@ -1,5 +1,9 @@
 # Same Company, Two Prices: NSE vs BSE closing-price gaps
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23666691.svg)](https://doi.org/10.5281/zenodo.23666691)
+
+**Cite as:** Goyal, U. (2026). *Same Company, Two Prices: How Closely Do India's Two Stock Exchanges Agree on the Close?* Working paper, Zenodo. https://doi.org/10.5281/zenodo.23666691
+
 **Paper:** [NSE_BSE_closing_price_gaps.pdf](NSE_BSE_closing_price_gaps.pdf), by Udit Goyal (October 2026)
 
 How closely do India's two stock exchanges agree on the closing price of the same company?
