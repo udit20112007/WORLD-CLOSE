@@ -74,6 +74,21 @@ def build() -> None:
         if c.get("enabled"):
             built[code] = _latest_rows(code)
 
+    # Leave out foreign companies' shares on exchanges with an international market (Mexico's SIC)
+    for code, c in cfg.items():
+        if c.get("drop_foreign_listings") and code in built and built[code][1] is not None:
+            from .foreign import foreign_listings, normalise
+            latest, last, history = built[code]
+            other_names = {normalise(n) for k, (_, l, _) in built.items() if k != code and l is not None
+                           for n in l["name"] if n}
+            us = {str(s).replace("/", "-") for k in ("NYSE", "NASDAQ", "NYSEAM") if k in built and built[k][1] is not None
+                  for s in built[k][1]["symbol"]}
+            mask = foreign_listings(last, other_names, us)
+            kept = last[~mask].reset_index(drop=True)
+            kept["bucket"] = kept.index // BUCKET_SIZE
+            built[code] = (latest, kept, history)
+            print(f"[{code}] left out {int(mask.sum())} foreign listings, kept {len(kept)}")
+
     # Which exchanges each ISIN trades on, to show "also listed on"
     isin_map: dict[str, set[str]] = defaultdict(set)
     for code, (latest, last, _) in built.items():
@@ -89,7 +104,7 @@ def build() -> None:
         c = cfg[code]
         status = store.read_status(code)
         entry = {"code": code, **{k: c[k] for k in ("name", "short", "country", "city", "region", "currency")},
-                 "series_label": c.get("series_label", "Series"),
+                 "series_label": c.get("series_label", "Series"), "note": c.get("note"),
                  "status": status, "available": last is not None}
         if last is None:
             index["exchanges"].append(entry)

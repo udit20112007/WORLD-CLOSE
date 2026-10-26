@@ -564,6 +564,8 @@
     "open_time": "07:30",
     "close_time": "15:05",
     "series_label": "Type",
-    "enabled": true
+    "enabled": true,
+    "drop_foreign_listings": true,
+    "note": "Mexican companies only. Shares of foreign companies traded in pesos on Mexico’s international market (SIC) are left out, since they’re shown on their home exchanges."
   }
 }

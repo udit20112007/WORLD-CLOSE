@@ -1041,3 +1041,49 @@ class PruneTests(unittest.TestCase):
         self.assertEqual(self.store.stored_days("NSE"), sorted(days[:3]))
         self.assertEqual(self.store.read_status("NSE")["days_stored"], 3)
         self.assertTrue(self.store.read_status("NSE")["last_trading_day"])        # rest of status kept
+
+
+class ForeignListingTests(unittest.TestCase):
+    """Real examples from Mexico's exchange data."""
+
+    def _mask(self, rows, other_names=(), us=()):
+        import pandas as pd
+        from pipeline.foreign import foreign_listings, normalise
+        df = pd.DataFrame(rows, columns=["symbol", "name"])
+        return dict(zip(df.symbol, foreign_listings(df, {normalise(n) for n in other_names}, set(us))))
+
+    def test_mexican_companies_are_kept(self):
+        m = self._mask([("GMEXICOB.MX", "Grupo México, S.A.B. de C.V."), ("FMTY14.MX", "Fibra Mty, S.A.P.I. de C.V."),
+                        ("FIHO12.MX", "FibraHotel"), ("BBAJIOO.MX", "Banco del Bajío, S.A., Institución de Banca Múltiple"),
+                        ("NAFTRACISHRS.MX", "iShares NAFTRAC"), ("NEXT25.MX", "Nearshoring Experts & Technology, S.C."),
+                        ("AERO.MX", "Grupo Aeroméxico, S.A.B. de C.V.")], us={"AERO"})
+        self.assertFalse(any(m.values()), m)        # Aeroméxico kept even though AERO is also a US ticker
+
+    def test_foreign_shares_are_dropped(self):
+        m = self._mask([("XOM.MX", "ExxonMobil Holdings Corporation"), ("MELIN.MX", "MercadoLibre, Inc."),
+                        ("1913N.MX", "Prada S.p.A."), ("AA1.MX", "Alcoa Corporation"),
+                        ("ANB.MX", "Anheuser-Busch InBev SA/NV"), ("KKRC.MX", "KKR & Co. Inc."),
+                        ("BRKB.MX", "Berkshire Hathaway Inc.")],
+                       other_names={"Anheuser-Busch InBev SA/NV"}, us={"XOM", "AA"})
+        self.assertTrue(all(m.values()), m)
+
+    def test_build_applies_the_filter_and_note(self):
+        import pandas as pd
+        tmp = Path(tempfile.mkdtemp())
+        os.environ["WC_DATA_DIR"] = str(tmp / "data")
+        try:
+            import pipeline.store, pipeline.build_site
+            importlib.reload(pipeline.store); importlib.reload(pipeline.build_site)
+            pipeline.build_site.SITE_DATA = tmp / "site"
+            from pipeline.common import STANDARD_COLUMNS
+            rows = [("WALMEX.MX", "Wal-Mart de México, S.A.B. de C.V."), ("BA.MX", "The Boeing Company"),
+                    ("CEMEXCPO.MX", "CEMEX, S.A.B. de C.V."), ("STLAN.MX", "Stellantis N.V.")]
+            df = pd.DataFrame([{"symbol": s, "name": n, "close": 10.0, "prev_close": 9.0} for s, n in rows]).reindex(columns=STANDARD_COLUMNS)
+            pipeline.store.save_day("BMV", dt.date(2026, 10, 23), df)
+            pipeline.build_site.build()
+            s = json.loads((tmp / "site" / "BMV" / "summary.json").read_text())
+            self.assertEqual(sorted(r[0] for r in s["rows"]), ["CEMEXCPO.MX", "WALMEX.MX"])
+            idx = json.loads((tmp / "site" / "exchanges.json").read_text())
+            self.assertIn("SIC", next(e for e in idx["exchanges"] if e["code"] == "BMV")["note"])
+        finally:
+            shutil.rmtree(tmp); os.environ.pop("WC_DATA_DIR", None)

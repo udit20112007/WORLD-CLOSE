@@ -109,6 +109,12 @@ each exchange's weekend is set in `config/exchanges.json`).
   dollars and euros; Oslo trades in kroner within Euronext. London prices show
   in pence (p), Johannesburg in cents (c) and Tel Aviv in agorot (ag.), as those
   exchanges quote them; values and market caps show in pounds, rand and shekels.
+- **Mexico shows Mexican companies only.** Its exchange also has an
+  international market (the SIC) where shares of foreign companies like Apple or
+  Prada trade in pesos. These would appear twice and crowd out Mexican stocks, so
+  the site leaves them out (`pipeline/foreign.py`, switched on with
+  `"drop_foreign_listings": true` in `config/exchanges.json`). The stored data
+  keeps them, so this is easy to undo.
 - **Dead listings are left out.** Yahoo's screener still lists many delisted or
   long-suspended securities (thousands on Euronext alone), so any stock with no
   trade in the last 30 days is dropped. The status page says how many.
@@ -220,7 +226,7 @@ Actions tab.
 
 ```bash
 pip install -r requirements.txt
-python -m unittest discover tests               # 57 tests using sample exchange files
+python -m unittest discover tests               # 60 tests using sample exchange files
 python -m pipeline.run update --exchanges NSE BSE
 python -m pipeline.run build
 cd site && python -m http.server 8000           # open http://localhost:8000
