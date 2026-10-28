@@ -130,6 +130,11 @@ each exchange's weekend is set in `config/exchanges.json`).
   settings in `config/exchanges.json` (`require_market_cap`, `drop_symbol_pattern`,
   `home_currencies`, `home_name_pattern`) and are applied when the site is built, so
   the stored data keeps everything.
+- **Missed days are filled in automatically.** Screener-based exchanges only show
+  the latest session, so if GitHub skips the run on the evening a market closes, that
+  day disappears from the screener. Every run therefore checks the last two weeks for
+  missing trading days and fills them from Yahoo's daily history. Days with no trading
+  (holidays) are remembered in the status file, so they're only asked about once.
 - **Dead listings are left out.** Yahoo's screener still lists many delisted or
   long-suspended securities (thousands on Euronext alone), so any stock with no
   trade in the last 30 days is dropped. The status page says how many.
@@ -241,7 +246,7 @@ Actions tab.
 
 ```bash
 pip install -r requirements.txt
-python -m unittest discover tests               # 66 tests using sample exchange files
+python -m unittest discover tests               # 75 tests using sample exchange files
 python -m pipeline.run update --exchanges NSE BSE
 python -m pipeline.run build
 cd site && python -m http.server 8000           # open http://localhost:8000

@@ -199,7 +199,8 @@ class USTests(unittest.TestCase):
         from pipeline.sources import nasdaq
         cfg = self.cfg["NASDAQ"]
         with mock.patch.object(self.run, "local_now", lambda tz: when), \
-             mock.patch.object(nasdaq, "fetch", lambda day, c: nasdaq.parse(payload or self._bigger(), c)):
+             mock.patch.object(nasdaq, "fetch", lambda day, c: nasdaq.parse(payload or self._bigger(), c)), \
+             mock.patch.object(nasdaq, "backfill", lambda *a, **k: ({}, 0, [])):   # no network in tests
             return self.run.update_exchange("NASDAQ", cfg, 0)
 
     def _bigger(self, bump=0.0):
@@ -1165,3 +1166,80 @@ class HomeMarketRuleTests(MarketCapFilterTests):
             ("APC.DE", "Apple Inc.", 3e12), ("0OK.DE", "Okta Inc.", 1.5e10), ("NOVO.DE", "Novo Nordisk A/S", 3e11)]))
         self.build_site.build()
         self.assertEqual(self._symbols("XETRA"), ["MRK.DE", "SAP.DE", "SIE.DE"])
+
+
+class GapFillTests(unittest.TestCase):
+    """Latest-only exchanges lose a day if the run on that evening is skipped; fill it from history."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        os.environ["WC_DATA_DIR"] = str(self.tmp / "data")
+        import pipeline.store, pipeline.run
+        for m in (pipeline.store, pipeline.run):
+            importlib.reload(m)
+        self.store, self.run = pipeline.store, pipeline.run
+        self.cfg = self.run.load_config()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp); os.environ.pop("WC_DATA_DIR", None)
+
+    def _df(self, close=10.0, n=60):
+        import pandas as pd
+        from pipeline.common import STANDARD_COLUMNS
+        return pd.DataFrame([{"symbol": f"S{i}.WA", "name": f"Spolka {i}", "close": close, "prev_close": close,
+                              "volume": 100} for i in range(n)]).reindex(columns=STANDARD_COLUMNS)
+
+    def test_finds_missed_weekdays_only(self):
+        for d in (19, 20, 23):                                   # Warsaw: saved Mon 19, Tue 20, Fri 23
+            self.store.save_day("GPW", dt.date(2026, 10, d), self._df())
+        gaps = self.run.missing_trading_days("GPW", self.cfg["GPW"], dt.date(2026, 10, 24))
+        self.assertEqual(gaps, [dt.date(2026, 10, 21), dt.date(2026, 10, 22)])   # weekend not included
+
+    def test_saudi_weekend_respected(self):
+        for d in (22, 25):                                       # Thu 22, Sun 25: Fri/Sat are the weekend
+            self.store.save_day("TADAWUL", dt.date(2026, 10, d), self._df())
+        self.assertEqual(self.run.missing_trading_days("TADAWUL", self.cfg["TADAWUL"], dt.date(2026, 10, 26)), [])
+
+    def _run_fill(self, history_days):
+        from pipeline.sources import yahoo_screen
+        asked = []
+        def fake_backfill(latest, start, end, cfg=None):
+            asked.append((start, end))
+            return {d: self._df(close=11.0) for d in history_days if start <= d <= end}, len(latest), []
+        warsaw = ZoneInfoT("Europe/Warsaw")
+        with mock.patch.object(yahoo_screen, "backfill", fake_backfill), \
+             mock.patch.object(self.run, "local_now", lambda tz: dt.datetime(2026, 10, 28, 12, 0, tzinfo=warsaw)), \
+             mock.patch.object(yahoo_screen, "screen_all", side_effect=AssertionError("market open: no screener call")):
+            self.run.update_exchange("GPW", self.cfg["GPW"], 0)
+        return asked
+
+    def test_fills_missed_days_and_remembers_holidays(self):
+        self.store.save_day("GPW", dt.date(2026, 10, 22), self._df())
+        self.store.save_day("GPW", dt.date(2026, 10, 27), self._df())
+        # Yahoo has the 23rd and 26th; nothing for the... (all weekdays traded here)
+        asked = self._run_fill([dt.date(2026, 10, 23), dt.date(2026, 10, 26)])
+        self.assertEqual(asked, [(dt.date(2026, 10, 23), dt.date(2026, 10, 26))])
+        self.assertEqual(self.store.stored_days("GPW"), [dt.date(2026, 10, d) for d in (22, 23, 26, 27)])
+        self.assertIn("Filled missed day(s)", " ".join(self.store.read_status("GPW")["notes"]))
+        # Next run: nothing left to fill, so no request at all
+        self.assertEqual(self._run_fill([]), [])
+
+    def test_holiday_is_asked_about_only_once(self):
+        self.store.save_day("GPW", dt.date(2026, 10, 30), self._df())
+        self.store.save_day("GPW", dt.date(2026, 11, 2), self._df())
+        self.store.save_day("GPW", dt.date(2026, 10, 29), self._df())
+        self.store.save_day("GPW", dt.date(2026, 10, 27), self._df())   # 28th missing, pretend it's a holiday
+        from pipeline.sources import yahoo_screen
+        asked = []
+        fake = lambda latest, s, e, cfg=None: (asked.append((s, e)) or ({}, 0, []))
+        with mock.patch.object(yahoo_screen, "backfill", fake), \
+             mock.patch.object(self.run, "local_now", lambda tz: dt.datetime(2026, 11, 3, 12, 0, tzinfo=ZoneInfoT(tz))):
+            self.run.fill_recent_gaps("GPW", self.cfg["GPW"], yahoo_screen)
+            notes = self.run.fill_recent_gaps("GPW", self.cfg["GPW"], yahoo_screen)
+        self.assertEqual(len(asked), 1)
+        self.assertEqual(notes, [])
+        self.assertIn("2026-10-28", self.store.read_status("GPW")["gaps_checked"])
+
+    def test_new_exchange_does_not_backfill_before_its_first_day(self):
+        self.store.save_day("GPW", dt.date(2026, 10, 27), self._df())
+        self.assertEqual(self.run.missing_trading_days("GPW", self.cfg["GPW"], dt.date(2026, 10, 28)), [])

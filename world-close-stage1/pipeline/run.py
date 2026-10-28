@@ -111,6 +111,59 @@ def fill_prev_close(code: str, day: dt.date, df: "pd.DataFrame") -> "pd.DataFram
     return df
 
 
+GAP_WINDOW_DAYS = 14
+
+
+def missing_trading_days(code: str, cfg: dict, today: dt.date) -> list[dt.date]:
+    """Weekdays (by this exchange's weekend) in the last two weeks that have no saved file,
+    between the first saved day in that window and the latest one, and that haven't
+    already been checked (holidays stay empty, and are only asked about once)."""
+    have = store.stored_days(code)
+    if not have:
+        return []
+    start = max(today - dt.timedelta(days=GAP_WINDOW_DAYS), have[0])
+    in_window = [d for d in have if d >= start]
+    if not in_window:
+        return []
+    first, last = in_window[0], have[-1]
+    checked = set(store.read_status(code).get("gaps_checked", []))
+    off, saved = weekend(cfg), set(have)
+    days, d = [], first
+    while d < last:
+        if d.weekday() not in off and d not in saved and d.isoformat() not in checked:
+            days.append(d)
+        d += dt.timedelta(days=1)
+    return days
+
+
+def fill_recent_gaps(code: str, cfg: dict, source) -> list[str]:
+    today = local_now(cfg["timezone"]).date()
+    gaps = missing_trading_days(code, cfg, today)
+    if not gaps:
+        return []
+    have = store.stored_days(code)
+    latest = store.load_day(code, have[-1])
+    days, ok, errs = source.backfill(latest, gaps[0], gaps[-1], cfg)
+    filled = []
+    for d in gaps:
+        rows = days.get(d)
+        if rows is not None and len(rows) >= MIN_ROWS:
+            store.save_day(code, d, fill_prev_close(code, d, rows))
+            filled.append(d)
+    # Remember every day we asked about, so holidays aren't requested again and again
+    status = store.read_status(code)
+    checked = sorted(set(status.get("gaps_checked", [])) | {d.isoformat() for d in gaps})
+    cutoff = (today - dt.timedelta(days=GAP_WINDOW_DAYS + 7)).isoformat()
+    store.write_status(code, gaps_checked=[c for c in checked if c >= cutoff])
+    unfilled = [d for d in gaps if d not in filled]
+    out = []
+    if filled:
+        out.append("Filled missed day(s) from history: " + ", ".join(d.isoformat() for d in filled) + ".")
+    if unfilled:
+        out.append("No trading found for " + ", ".join(d.isoformat() for d in unfilled) + " (likely holidays).")
+    return out
+
+
 def update_latest_only(code: str, cfg: dict, source, backfill_days: int) -> bool:
     now = local_now(cfg["timezone"])
     day = session_day(cfg, now)
@@ -182,6 +235,15 @@ def update_latest_only(code: str, cfg: dict, source, backfill_days: int) -> bool
                 store.save_day(code, d, rows)
             notes.append(f"Backfill: {ok} of {len(latest)} stocks returned history, {len(days)} days written.")
             print(f"[{code}] {notes[-1]}")
+
+    # Fill recent missing trading days. A latest-only source only shows today's session,
+    # so if a run was skipped on the evening a market closed, that day is gone from the
+    # source, but it can still be filled from the history the source's backfill uses.
+    if hasattr(source, "backfill") and not backfill_days:
+        try:
+            notes.extend(fill_recent_gaps(code, cfg, source))
+        except Exception as exc:
+            notes.append(f"Couldn't fill missing days this time ({str(exc)[:120]}).")
 
     if hasattr(source, "repair"):
         try:
