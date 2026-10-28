@@ -74,6 +74,41 @@ def build() -> None:
         if c.get("enabled"):
             built[code] = _latest_rows(code)
 
+    # On exchanges where Yahoo's screener also lists certificates, warrants, notes, bonds and
+    # foreign shares (Euronext, London, Xetra), show only listings that have a market cap.
+    # Chart-history days carry no market cap, so use any day in the stored window.
+    for code, c in cfg.items():
+        if c.get("require_market_cap") and code in built and built[code][1] is not None:
+            latest, last, history = built[code]
+            capped = set(history.loc[pd.to_numeric(history["market_cap"], errors="coerce") > 0, "symbol"])
+            if capped:
+                kept = last[last["symbol"].isin(capped)].reset_index(drop=True)
+                kept["bucket"] = kept.index // BUCKET_SIZE
+                built[code] = (latest, kept, history)
+                print(f"[{code}] showing {len(kept)} listings with a market cap, left out {len(last) - len(kept)}")
+
+    # Home-market rules for exchanges that also carry many foreign shares (London, Xetra):
+    #   drop_symbol_pattern  e.g. London's international order book codes (0ABC.L)
+    #   home_currencies      keep listings quoted in these currencies (London: GBp, GBP)
+    #   home_name_pattern    keep names with a home legal form (Xetra: AG, SE, KGaA, GmbH)
+    for code, c in cfg.items():
+        rules = [k for k in ("drop_symbol_pattern", "home_currencies", "home_name_pattern") if c.get(k)]
+        if not rules or code not in built or built[code][1] is None:
+            continue
+        latest, last, history = built[code]
+        keep = pd.Series(True, index=last.index)
+        if c.get("drop_symbol_pattern"):
+            keep &= ~last["symbol"].astype(str).str.contains(c["drop_symbol_pattern"], regex=True)
+        if c.get("home_currencies"):
+            cur = last["currency"].fillna("").astype(str).replace("", c["currency"])
+            keep &= cur.isin(c["home_currencies"])
+        if c.get("home_name_pattern"):
+            keep &= last["name"].fillna("").astype(str).str.contains(c["home_name_pattern"], case=False, regex=True)
+        kept = last[keep].reset_index(drop=True)
+        kept["bucket"] = kept.index // BUCKET_SIZE
+        built[code] = (latest, kept, history)
+        print(f"[{code}] home-market rules ({', '.join(rules)}): kept {len(kept)}, left out {len(last) - len(kept)}")
+
     # Leave out foreign companies' shares on exchanges with an international market (Mexico's SIC)
     for code, c in cfg.items():
         if c.get("drop_foreign_listings") and code in built and built[code][1] is not None:

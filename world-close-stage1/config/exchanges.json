@@ -310,7 +310,14 @@
     "open_time": "07:00",
     "close_time": "16:40",
     "series_label": "Type",
-    "enabled": true
+    "enabled": true,
+    "require_market_cap": true,
+    "note": "UK-quoted companies only. Bonds, exchange-traded products, foreign shares on London’s international order book and listings quoted in other currencies are left out; foreign companies are shown on their home exchanges.",
+    "drop_symbol_pattern": "^0[A-Z0-9]{3}\\.L$",
+    "home_currencies": [
+      "GBp",
+      "GBP"
+    ]
   },
   "EURONEXT": {
     "name": "Euronext",
@@ -343,7 +350,9 @@
       "MIL": "Milan",
       "OSL": "Oslo",
       "PAR": "Paris"
-    }
+    },
+    "require_market_cap": true,
+    "note": "Companies only. Certificates, warrants, structured notes and exchange-traded products listed on Euronext (thousands in Milan alone) are left out."
   },
   "XETRA": {
     "name": "Deutsche Börse Xetra",
@@ -359,7 +368,10 @@
     "open_time": "08:00",
     "close_time": "17:40",
     "series_label": "Type",
-    "enabled": true
+    "enabled": true,
+    "require_market_cap": true,
+    "note": "Companies with a German-style legal form (AG, SE, KGaA, GmbH) only; shares of other foreign companies traded in Frankfurt are left out. Some Swiss and other European companies with similar legal forms (for example Roche or Airbus) still appear here as well as on their home exchanges.",
+    "home_name_pattern": "\\b(AG|SE|KGaA|GmbH|Aktiengesellschaft)\\b"
   },
   "SIX": {
     "name": "SIX Swiss Exchange",

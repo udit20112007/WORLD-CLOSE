@@ -855,7 +855,7 @@ class Stage4Tests(unittest.TestCase):
              "regularMarketTime": t},
             {"symbol": "EQNR.OL", "longName": "Equinor ASA", "exchange": "OSL", "currency": "NOK",
              "regularMarketPrice": 260.0, "regularMarketPreviousClose": 258.0, "regularMarketVolume": 4000000,
-             "regularMarketTime": t},
+             "marketCap": 7.0e11, "regularMarketTime": t},
         ]
         q += [{"symbol": f"X{i}.PA", "longName": f"Co {i}", "exchange": "PAR", "currency": "EUR", "regularMarketPrice": 10.0,
                "regularMarketPreviousClose": 10.0, "regularMarketVolume": 100, "regularMarketTime": t} for i in range(60)]
@@ -1087,3 +1087,81 @@ class ForeignListingTests(unittest.TestCase):
             self.assertIn("SIC", next(e for e in idx["exchanges"] if e["code"] == "BMV")["note"])
         finally:
             shutil.rmtree(tmp); os.environ.pop("WC_DATA_DIR", None)
+
+
+class MarketCapFilterTests(unittest.TestCase):
+    """Euronext/London/Xetra: Yahoo lists certificates, notes, bonds and foreign shares as stocks."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        os.environ["WC_DATA_DIR"] = str(self.tmp / "data")
+        import pipeline.store, pipeline.build_site
+        importlib.reload(pipeline.store); importlib.reload(pipeline.build_site)
+        pipeline.build_site.SITE_DATA = self.tmp / "site"
+        self.store, self.build_site = pipeline.store, pipeline.build_site
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp); os.environ.pop("WC_DATA_DIR", None)
+
+    def _day(self, rows):
+        import pandas as pd
+        from pipeline.common import STANDARD_COLUMNS
+        return pd.DataFrame([{"symbol": s, "name": n, "close": 10.0, "prev_close": 9.5, "market_cap": cap}
+                             for s, n, cap in rows]).reindex(columns=STANDARD_COLUMNS)
+
+    def _symbols(self, code):
+        s = json.loads((self.build_site.SITE_DATA / code / "summary.json").read_text())
+        return sorted(r[0] for r in s["rows"])
+
+    def test_only_listings_with_a_market_cap_are_shown(self):
+        self.store.save_day("EURONEXT", dt.date(2026, 10, 26), self._day([
+            ("MC.PA", "LVMH Moët Hennessy Louis Vuitton", 3.2e11), ("ASML.AS", "ASML Holding N.V.", 3.5e11),
+            ("F94545.MI", "F94545.MI", None), ("1040P.PA", "BCP CAC 40", None),
+            ("LS2X.MI", "Leverage Shares 2x Apple ETP Securities A", None)]))
+        self.build_site.build()
+        self.assertEqual(self._symbols("EURONEXT"), ["ASML.AS", "MC.PA"])
+
+    def test_market_cap_from_an_earlier_day_counts(self):
+        # The latest day came from chart history (no market caps); the screener day before had them
+        self.store.save_day("LSE", dt.date(2026, 10, 23), self._day([("SHEL.L", "Shell plc", 1.6e11), ("0A1U.L", "Uber Technologies, Inc.", None)]))
+        self.store.save_day("LSE", dt.date(2026, 10, 26), self._day([("SHEL.L", "Shell plc", None), ("0A1U.L", "Uber Technologies, Inc.", None)]))
+        self.build_site.build()
+        self.assertEqual(self._symbols("LSE"), ["SHEL.L"])
+
+    def test_no_market_caps_at_all_means_no_filter(self):
+        # An exchange with only chart-history days so far: don't hide everything
+        self.store.save_day("XETRA", dt.date(2026, 10, 23), self._day([("SAP.DE", "SAP SE", None), ("SIE.DE", "Siemens AG", None)]))
+        self.build_site.build()
+        self.assertEqual(self._symbols("XETRA"), ["SAP.DE", "SIE.DE"])
+
+    def test_one_bad_timestamp_cannot_empty_an_exchange(self):
+        from pipeline.run import load_config
+        from pipeline.sources import yahoo_screen
+        now = int(dt.datetime(2026, 10, 26, 15, 0, tzinfo=dt.timezone.utc).timestamp())
+        quotes = [{"symbol": f"S{i}.WA", "longName": f"Spolka {i} S.A.", "regularMarketPrice": 10.0,
+                   "regularMarketVolume": 100, "regularMarketTime": now - i * 60} for i in range(700)]
+        quotes.append({"symbol": "BAD.WA", "longName": "Bad timestamp", "regularMarketPrice": 1.0,
+                       "regularMarketTime": now + 400 * 86400})          # a year in the future
+        df = yahoo_screen.parse(quotes, load_config()["GPW"])
+        self.assertGreaterEqual(len(df), 700)
+
+
+class HomeMarketRuleTests(MarketCapFilterTests):
+    def test_london_rules(self):
+        import pandas as pd
+        from pipeline.common import STANDARD_COLUMNS
+        rows = [("HSBA.L", "HSBC Holdings plc", 1.6e11, ""), ("SHEL.L", "Shell plc", 1.7e11, ""),
+                ("0R2V.L", "Apple Inc.", 3e12, "USD"), ("SMSN.L", "Samsung Electronics Co., Ltd.", 4e14, "USD"),
+                ("TTE.L", "TotalEnergies SE", 1.2e11, "EUR"), ("7203.L", "Toyota Motor Corporation", 4e13, "JPY")]
+        df = pd.DataFrame([{"symbol": s, "name": n, "close": 1.0, "prev_close": 1.0, "market_cap": m, "currency": c}
+                           for s, n, m, c in rows]).reindex(columns=STANDARD_COLUMNS)
+        self.store.save_day("LSE", dt.date(2026, 10, 26), df)
+        self.build_site.build()
+        self.assertEqual(self._symbols("LSE"), ["HSBA.L", "SHEL.L"])
+
+    def test_xetra_rules(self):
+        self.store.save_day("XETRA", dt.date(2026, 10, 26), self._day([
+            ("SAP.DE", "SAP SE", 2.5e11), ("SIE.DE", "Siemens Aktiengesellschaft", 1.6e11), ("MRK.DE", "Merck KGaA", 6e10),
+            ("APC.DE", "Apple Inc.", 3e12), ("0OK.DE", "Okta Inc.", 1.5e10), ("NOVO.DE", "Novo Nordisk A/S", 3e11)]))
+        self.build_site.build()
+        self.assertEqual(self._symbols("XETRA"), ["MRK.DE", "SAP.DE", "SIE.DE"])

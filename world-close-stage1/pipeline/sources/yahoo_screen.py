@@ -82,7 +82,9 @@ def drop_dead_listings(raw: pd.DataFrame) -> pd.DataFrame:
     t = pd.to_numeric(raw["regularMarketTime"], errors="coerce")
     if t.notna().mean() < 0.5:          # the field isn't reliable here; keep everything
         return raw
-    keep = t >= t.max() - DEAD_AFTER_DAYS * 86400
+    # Measured from the 90th percentile rather than the maximum, so one bad future
+    # timestamp in Yahoo's response can't make every other stock look dead.
+    keep = t >= t.quantile(0.9) - DEAD_AFTER_DAYS * 86400
     dropped = int((~keep).sum())
     if dropped:
         print(f"  Dropped {dropped} of {len(raw)} listings with no trade in {DEAD_AFTER_DAYS} days",

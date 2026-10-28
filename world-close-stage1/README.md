@@ -120,6 +120,16 @@ each exchange's weekend is set in `config/exchanges.json`).
   the site leaves them out (`pipeline/foreign.py`, switched on with
   `"drop_foreign_listings": true` in `config/exchanges.json`). The stored data
   keeps them, so this is easy to undo.
+- **Euronext, London and Xetra show companies only.** Yahoo's screener also lists
+  thousands of certificates, warrants, notes, bonds, exchange-traded products and
+  foreign shares on these exchanges (over 8,000 in Milan alone). The site keeps only
+  listings with a market capitalisation; London also drops its international order
+  book (codes like `0ABC.L`) and listings not quoted in pence or pounds; Xetra keeps
+  companies with a German-style legal form (AG, SE, KGaA, GmbH). Some Swiss and other
+  European companies with similar legal forms still appear on Xetra. These rules are
+  settings in `config/exchanges.json` (`require_market_cap`, `drop_symbol_pattern`,
+  `home_currencies`, `home_name_pattern`) and are applied when the site is built, so
+  the stored data keeps everything.
 - **Dead listings are left out.** Yahoo's screener still lists many delisted or
   long-suspended securities (thousands on Euronext alone), so any stock with no
   trade in the last 30 days is dropped. The status page says how many.
@@ -231,7 +241,7 @@ Actions tab.
 
 ```bash
 pip install -r requirements.txt
-python -m unittest discover tests               # 60 tests using sample exchange files
+python -m unittest discover tests               # 66 tests using sample exchange files
 python -m pipeline.run update --exchanges NSE BSE
 python -m pipeline.run build
 cd site && python -m http.server 8000           # open http://localhost:8000
