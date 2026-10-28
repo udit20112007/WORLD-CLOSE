@@ -1,0 +1,659 @@
+{
+ "columns_available": [
+  "close_b",
+  "close_n",
+  "date",
+  "gap_bps",
+  "high_b",
+  "high_n",
+  "isin",
+  "low_b",
+  "low_n",
+  "mid",
+  "name_b",
+  "name_n",
+  "open_b",
+  "open_n",
+  "prev_close_b",
+  "prev_close_n",
+  "series_b",
+  "series_n",
+  "symbol_b",
+  "symbol_n",
+  "trades_b",
+  "trades_n",
+  "value_b",
+  "value_n",
+  "volume_b",
+  "volume_n"
+ ],
+ "liquidity_groups_from": "first paper (../nse_bse_gaps/work/paper_frames.pkl)",
+ "sample": {
+  "stock_days": 491644,
+  "companies": 2212,
+  "from": "2025-10-20",
+  "to": "2026-10-26"
+ },
+ "test1_stale": {
+  "Q1 (least)": {
+   "slope_bps_per_pct": {
+    "b": -6.638,
+    "se": 0.355,
+    "t": -18.7,
+    "n": 81785
+   },
+   "intercept_bps": {
+    "b": 16.104,
+    "se": 1.226,
+    "t": 13.1,
+    "n": 81785
+   },
+   "mean_gap_bps": 16.3,
+   "mean_nse_return_pct": -0.031,
+   "mean_gap_up_days": -8.9,
+   "mean_gap_down_days": 38.4,
+   "mean_gap_flat_days": 12.0,
+   "bse_higher_up_days_pct": 46.9,
+   "bse_higher_down_days_pct": 60.7,
+   "bse_higher_flat_days_pct": 53.0,
+   "bias_explained_by_staleness_pct": 1.2
+  },
+  "Q2": {
+   "slope_bps_per_pct": {
+    "b": -1.672,
+    "se": 0.111,
+    "t": -15.1,
+    "n": 95401
+   },
+   "intercept_bps": {
+    "b": 1.864,
+    "se": 0.281,
+    "t": 6.6,
+    "n": 95401
+   },
+   "mean_gap_bps": 1.9,
+   "mean_nse_return_pct": -0.016,
+   "mean_gap_up_days": -4.3,
+   "mean_gap_down_days": 7.3,
+   "mean_gap_flat_days": 1.0,
+   "bse_higher_up_days_pct": 45.3,
+   "bse_higher_down_days_pct": 55.3,
+   "bse_higher_flat_days_pct": 49.0,
+   "bias_explained_by_staleness_pct": null
+  },
+  "Q3": {
+   "slope_bps_per_pct": {
+    "b": -0.346,
+    "se": 0.039,
+    "t": -8.8,
+    "n": 102470
+   },
+   "intercept_bps": {
+    "b": 0.69,
+    "se": 0.133,
+    "t": 5.2,
+    "n": 102470
+   },
+   "mean_gap_bps": 0.7,
+   "mean_nse_return_pct": -0.027,
+   "mean_gap_up_days": -0.7,
+   "mean_gap_down_days": 2.2,
+   "mean_gap_flat_days": -0.2,
+   "bse_higher_up_days_pct": 47.0,
+   "bse_higher_down_days_pct": 53.5,
+   "bse_higher_flat_days_pct": 48.3,
+   "bias_explained_by_staleness_pct": null
+  },
+  "Q4": {
+   "slope_bps_per_pct": {
+    "b": -0.143,
+    "se": 0.03,
+    "t": -4.8,
+    "n": 105008
+   },
+   "intercept_bps": {
+    "b": 0.164,
+    "se": 0.091,
+    "t": 1.8,
+    "n": 105008
+   },
+   "mean_gap_bps": 0.2,
+   "mean_nse_return_pct": 0.017,
+   "mean_gap_up_days": -0.4,
+   "mean_gap_down_days": 1.0,
+   "mean_gap_flat_days": -0.6,
+   "bse_higher_up_days_pct": 46.1,
+   "bse_higher_down_days_pct": 51.6,
+   "bse_higher_flat_days_pct": 45.3,
+   "bias_explained_by_staleness_pct": null
+  },
+  "Q5 (most)": {
+   "slope_bps_per_pct": {
+    "b": -0.442,
+    "se": 0.037,
+    "t": -11.9,
+    "n": 106905
+   },
+   "intercept_bps": {
+    "b": -0.798,
+    "se": 0.079,
+    "t": -10.1,
+    "n": 106905
+   },
+   "mean_gap_bps": -0.8,
+   "mean_nse_return_pct": 0.035,
+   "mean_gap_up_days": -2.1,
+   "mean_gap_down_days": 0.6,
+   "mean_gap_flat_days": -1.4,
+   "bse_higher_up_days_pct": 42.3,
+   "bse_higher_down_days_pct": 47.0,
+   "bse_higher_flat_days_pct": 41.9,
+   "bias_explained_by_staleness_pct": null
+  }
+ },
+ "test1_market_days_q1": {
+  "mean_gap_market_up_bps": 13.4,
+  "mean_gap_market_down_bps": 18.5,
+  "share_of_days_market_down_pct": 58.4
+ },
+ "test2_thin_days": {
+  "one_price_b": {
+   "label": "BSE high equals BSE low (all trades at one price)",
+   "Q1 (least)": {
+    "share_of_days_flagged_pct": 5.6,
+    "mean_gap_flagged_bps": 39.6,
+    "mean_gap_other_bps": 14.9,
+    "bse_higher_flagged_pct": 56.4,
+    "bse_higher_other_pct": 54.1,
+    "difference": {
+     "b": 24.658,
+     "se": 6.203,
+     "t": 4.0,
+     "n": 81795
+    }
+   },
+   "Q3": {
+    "share_of_days_flagged_pct": 0.2,
+    "mean_gap_flagged_bps": -3.7,
+    "mean_gap_other_bps": 0.7,
+    "bse_higher_flagged_pct": 19.9,
+    "bse_higher_other_pct": 50.2,
+    "difference": {
+     "b": -4.359,
+     "se": 3.931,
+     "t": -1.1,
+     "n": 102485
+    }
+   },
+   "Q5 (most)": {
+    "share_of_days_flagged_pct": 0.0,
+    "mean_gap_flagged_bps": 0.9,
+    "mean_gap_other_bps": -0.8,
+    "bse_higher_flagged_pct": 56.2,
+    "bse_higher_other_pct": 44.0,
+    "difference": {
+     "b": 1.727,
+     "se": 1.865,
+     "t": 0.9,
+     "n": 106924
+    }
+   }
+  },
+  "close_eq_open_b": {
+   "label": "BSE close equals BSE open",
+   "Q1 (least)": {
+    "share_of_days_flagged_pct": 7.1,
+    "mean_gap_flagged_bps": 34.9,
+    "mean_gap_other_bps": 14.9,
+    "bse_higher_flagged_pct": 56.6,
+    "bse_higher_other_pct": 54.1,
+    "difference": {
+     "b": 20.002,
+     "se": 5.002,
+     "t": 4.0,
+     "n": 81795
+    }
+   },
+   "Q3": {
+    "share_of_days_flagged_pct": 0.7,
+    "mean_gap_flagged_bps": -1.8,
+    "mean_gap_other_bps": 0.7,
+    "bse_higher_flagged_pct": 37.0,
+    "bse_higher_other_pct": 50.2,
+    "difference": {
+     "b": -2.477,
+     "se": 1.524,
+     "t": -1.6,
+     "n": 102485
+    }
+   },
+   "Q5 (most)": {
+    "share_of_days_flagged_pct": 0.4,
+    "mean_gap_flagged_bps": -1.5,
+    "mean_gap_other_bps": -0.8,
+    "bse_higher_flagged_pct": 45.7,
+    "bse_higher_other_pct": 44.0,
+    "difference": {
+     "b": -0.709,
+     "se": 0.987,
+     "t": -0.7,
+     "n": 106924
+    }
+   }
+  },
+  "few_trades_b": {
+   "label": "3 or fewer trades on BSE",
+   "Q1 (least)": {
+    "share_of_days_flagged_pct": 9.4,
+    "mean_gap_flagged_bps": 37.4,
+    "mean_gap_other_bps": 14.1,
+    "bse_higher_flagged_pct": 56.0,
+    "bse_higher_other_pct": 54.1,
+    "difference": {
+     "b": 23.339,
+     "se": 4.901,
+     "t": 4.8,
+     "n": 81795
+    }
+   },
+   "Q3": {
+    "share_of_days_flagged_pct": 0.0,
+    "mean_gap_flagged_bps": 23.7,
+    "mean_gap_other_bps": 0.7,
+    "bse_higher_flagged_pct": 43.8,
+    "bse_higher_other_pct": 50.1,
+    "difference": {
+     "b": 23.011,
+     "se": 13.592,
+     "t": 1.7,
+     "n": 102485
+    }
+   },
+   "Q5 (most)": {
+    "share_of_days_flagged_pct": 0.0,
+    "mean_gap_flagged_bps": 1.4,
+    "mean_gap_other_bps": -0.8,
+    "bse_higher_flagged_pct": 51.6,
+    "bse_higher_other_pct": 44.0,
+    "difference": {
+     "b": 2.232,
+     "se": 1.551,
+     "t": 1.4,
+     "n": 106924
+    }
+   }
+  },
+  "low_volume_b": {
+   "label": "BSE volume in the stock's own lowest fifth of days",
+   "Q1 (least)": {
+    "share_of_days_flagged_pct": 20.4,
+    "mean_gap_flagged_bps": 26.9,
+    "mean_gap_other_bps": 13.6,
+    "bse_higher_flagged_pct": 56.8,
+    "bse_higher_other_pct": 53.6,
+    "difference": {
+     "b": 13.302,
+     "se": 2.004,
+     "t": 6.6,
+     "n": 81795
+    }
+   },
+   "Q3": {
+    "share_of_days_flagged_pct": 20.0,
+    "mean_gap_flagged_bps": 0.3,
+    "mean_gap_other_bps": 0.8,
+    "bse_higher_flagged_pct": 49.7,
+    "bse_higher_other_pct": 50.2,
+    "difference": {
+     "b": -0.486,
+     "se": 0.223,
+     "t": -2.2,
+     "n": 102485
+    }
+   },
+   "Q5 (most)": {
+    "share_of_days_flagged_pct": 20.0,
+    "mean_gap_flagged_bps": -1.0,
+    "mean_gap_other_bps": -0.8,
+    "bse_higher_flagged_pct": 43.4,
+    "bse_higher_other_pct": 44.1,
+    "difference": {
+     "b": -0.247,
+     "se": 0.135,
+     "t": -1.8,
+     "n": 106924
+    }
+   }
+  }
+ },
+ "test3_who_adjusts": {
+  "all": {
+   "nse_next_return": {
+    "b": 0.148,
+    "se": 0.009,
+    "t": 17.0,
+    "n": 488508
+   },
+   "bse_next_return": {
+    "b": -0.722,
+    "se": 0.017,
+    "t": -41.8,
+    "n": 488508
+   },
+   "gap_closed_next_day_pct": 87.0,
+   "share_of_correction_by_bse_pct": 83.0
+  },
+  "Q1 (least)": {
+   "nse_next_return": {
+    "b": 0.141,
+    "se": 0.01,
+    "t": 14.2,
+    "n": 80649
+   },
+   "bse_next_return": {
+    "b": -0.718,
+    "se": 0.021,
+    "t": -34.8,
+    "n": 80649
+   },
+   "gap_closed_next_day_pct": 85.9,
+   "share_of_correction_by_bse_pct": 83.6
+  },
+  "Q2": {
+   "nse_next_return": {
+    "b": 0.163,
+    "se": 0.022,
+    "t": 7.4,
+    "n": 94872
+   },
+   "bse_next_return": {
+    "b": -0.788,
+    "se": 0.023,
+    "t": -34.9,
+    "n": 94872
+   },
+   "gap_closed_next_day_pct": 95.1,
+   "share_of_correction_by_bse_pct": 82.9
+  },
+  "Q3": {
+   "nse_next_return": {
+    "b": 0.199,
+    "se": 0.044,
+    "t": 4.5,
+    "n": 101985
+   },
+   "bse_next_return": {
+    "b": -0.773,
+    "se": 0.046,
+    "t": -16.8,
+    "n": 101985
+   },
+   "gap_closed_next_day_pct": 97.1,
+   "share_of_correction_by_bse_pct": 79.6
+  },
+  "Q4": {
+   "nse_next_return": {
+    "b": 0.132,
+    "se": 0.059,
+    "t": 2.2,
+    "n": 104553
+   },
+   "bse_next_return": {
+    "b": -0.849,
+    "se": 0.063,
+    "t": -13.5,
+    "n": 104553
+   },
+   "gap_closed_next_day_pct": 98.2,
+   "share_of_correction_by_bse_pct": 86.5
+  },
+  "Q5 (most)": {
+   "nse_next_return": {
+    "b": 0.497,
+    "se": 0.039,
+    "t": 12.9,
+    "n": 106449
+   },
+   "bse_next_return": {
+    "b": -0.49,
+    "se": 0.038,
+    "t": -12.7,
+    "n": 106449
+   },
+   "gap_closed_next_day_pct": 98.7,
+   "share_of_correction_by_bse_pct": 49.6
+  }
+ },
+ "test4_selection": {
+  "Q1 (least)": {
+   "share_of_nse_days_also_on_bse_pct": 92.7,
+   "nse_return_on_bse_days_pct": -0.03,
+   "nse_return_other_days_pct": 0.054,
+   "within_company_difference_pct": {
+    "b": -0.109,
+    "se": 0.031,
+    "t": -3.5,
+    "n": 88188
+   },
+   "nse_value_vs_usual_on_bse_days": 1.029,
+   "nse_value_vs_usual_other_days": 0.609,
+   "nse_close_location_on_bse_days": 0.414,
+   "nse_close_location_other_days": 0.459
+  },
+  "Q2": {
+   "share_of_nse_days_also_on_bse_pct": 99.3,
+   "nse_return_on_bse_days_pct": -0.016,
+   "nse_return_other_days_pct": 0.153,
+   "within_company_difference_pct": {
+    "b": -0.17,
+    "se": 0.087,
+    "t": -2.0,
+    "n": 96024
+   },
+   "nse_value_vs_usual_on_bse_days": 1.001,
+   "nse_value_vs_usual_other_days": 0.674,
+   "nse_close_location_on_bse_days": 0.425,
+   "nse_close_location_other_days": 0.478
+  },
+  "Q3": {
+   "share_of_nse_days_also_on_bse_pct": 99.5,
+   "nse_return_on_bse_days_pct": -0.027,
+   "nse_return_other_days_pct": 0.093,
+   "within_company_difference_pct": {
+    "b": -0.101,
+    "se": 0.091,
+    "t": -1.1,
+    "n": 102935
+   },
+   "nse_value_vs_usual_on_bse_days": 1.0,
+   "nse_value_vs_usual_other_days": 0.999,
+   "nse_close_location_on_bse_days": 0.434,
+   "nse_close_location_other_days": 0.475
+  },
+  "Q4": {
+   "share_of_nse_days_also_on_bse_pct": 99.8,
+   "nse_return_on_bse_days_pct": 0.017,
+   "nse_return_other_days_pct": 0.104,
+   "within_company_difference_pct": {
+    "b": 0.105,
+    "se": 0.042,
+    "t": 2.5,
+    "n": 105184
+   },
+   "nse_value_vs_usual_on_bse_days": 1.0,
+   "nse_value_vs_usual_other_days": 0.913,
+   "nse_close_location_on_bse_days": 0.448,
+   "nse_close_location_other_days": 0.473
+  },
+  "Q5 (most)": {
+   "share_of_nse_days_also_on_bse_pct": 99.9,
+   "nse_return_on_bse_days_pct": 0.035,
+   "nse_return_other_days_pct": 0.42,
+   "within_company_difference_pct": {
+    "b": -0.473,
+    "se": 0.306,
+    "t": -1.5,
+    "n": 107049
+   },
+   "nse_value_vs_usual_on_bse_days": 1.0,
+   "nse_value_vs_usual_other_days": 1.747,
+   "nse_close_location_on_bse_days": 0.472,
+   "nse_close_location_other_days": 0.496
+  }
+ },
+ "level_shift": {
+  "break_date": "2026-01-19",
+  "F_stat": 68.0,
+  "note": "F is the sup-F from scanning every break date; it needs larger critical values than an ordinary F test (roughly 9 at 5%).",
+  "before": {
+   "median_gap": 9.6,
+   "stocks": 1888.5,
+   "median_price": 301.5,
+   "bse_value_share_pct": 6.7,
+   "one_price_b_pct": 1.1
+  },
+  "after": {
+   "median_gap": 11.4,
+   "stocks": 1991.7,
+   "median_price": 286.0,
+   "bse_value_share_pct": 7.1,
+   "one_price_b_pct": 1.1
+  },
+  "stocks_only_before": 1,
+  "stocks_only_after": 202,
+  "median_gap_by_group": {
+   "Q1 (least)": {
+    "before": 37.4,
+    "after": 50.0
+   },
+   "Q2": {
+    "before": 17.2,
+    "after": 20.4
+   },
+   "Q3": {
+    "before": 10.4,
+    "after": 11.4
+   },
+   "Q4": {
+    "before": 6.8,
+    "after": 7.4
+   },
+   "Q5 (most)": {
+    "before": 3.7,
+    "after": 4.7
+   }
+  },
+  "stocks_10_days_before": 1933.2,
+  "stocks_10_days_after": 1956.0,
+  "same_companies_median_gap": {
+   "before": 9.6,
+   "after": 10.9
+  },
+  "abs_market_move_pct": {
+   "before": 0.521,
+   "after": 0.839
+  },
+  "shift_without_control": {
+   "b": 1.855,
+   "se": 0.298,
+   "t": 6.2,
+   "n": 250
+  },
+  "shift_controlling_for_market_move": {
+   "b": 1.656,
+   "se": 0.286,
+   "t": 5.8,
+   "n": 250
+  },
+  "market_move_coef": {
+   "b": 0.624,
+   "se": 0.14,
+   "t": 4.5,
+   "n": 250
+  }
+ },
+ "closing_auction": {
+  "date": "2026-08-03",
+  "treated_group": "most-traded fifth of companies (proxy for stocks with derivatives)",
+  "treated_companies": 441,
+  "control_companies": 1739,
+  "days_before": 40,
+  "days_after": 58,
+  "median_gap_treated": {
+   "before": 3.7,
+   "after": 8.0
+  },
+  "median_gap_control": {
+   "before": 13.1,
+   "after": 13.8
+  },
+  "treated_first_day": 14.3,
+  "treated_last_10_days": 8.3,
+  "did_daily_median": {
+   "b": 3.714,
+   "se": 0.336,
+   "t": 11.1,
+   "n": 98
+  },
+  "did_controlling_market_move": {
+   "b": 3.671,
+   "se": 0.291,
+   "t": 12.6,
+   "n": 98
+  },
+  "signed_gap_treated": {
+   "before": -0.4,
+   "after": -2.7
+  },
+  "bse_higher_treated_pct": {
+   "before": 43.9,
+   "after": 44.0
+  },
+  "identical_close_treated_pct": {
+   "before": 5.8,
+   "after": 5.4
+  },
+  "whole_rupee_close_treated_pct": {
+   "nse": {
+    "before": 11.8,
+    "after": 25.8
+   },
+   "bse": {
+    "before": 4.7,
+    "after": 23.9
+   }
+  },
+  "whole_rupee_close_control_pct": {
+   "nse": {
+    "before": 5.5,
+    "after": 5.6
+   },
+   "bse": {
+    "before": 7.0,
+    "after": 7.1
+   }
+  },
+  "by_group": {
+   "Q1 (least)": {
+    "before": 44.6,
+    "after": 52.0
+   },
+   "Q2": {
+    "before": 17.4,
+    "after": 20.0
+   },
+   "Q3": {
+    "before": 10.2,
+    "after": 10.7
+   },
+   "Q4": {
+    "before": 7.0,
+    "after": 6.8
+   },
+   "Q5 (most)": {
+    "before": 3.7,
+    "after": 8.0
+   }
+  }
+ }
+}
