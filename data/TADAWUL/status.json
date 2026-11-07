@@ -1,0 +1,14 @@
+{
+  "last_attempt": "2026-11-07T07:35:19Z",
+  "new_days": 0,
+  "errors": [],
+  "notes": [
+    "2026-11-05 already saved."
+  ],
+  "last_success": "2026-11-05T17:44:46Z",
+  "last_trading_day": "2026-11-05",
+  "days_stored": 213,
+  "gaps_checked": [
+    "2026-10-18"
+  ]
+}
