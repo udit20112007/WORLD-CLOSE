@@ -1,0 +1,2 @@
+Last automatic keep-alive: 2026-11-27 19:15 UTC
+GitHub pauses scheduled workflows after 60 days without commits; scripts/ci_run.sh updates this file monthly.
